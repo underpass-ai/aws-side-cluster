@@ -1,0 +1,10 @@
+Gateway:
+  http://{{ .Values.gateway.loadBalancerIP }}/worker-1/status
+  http://{{ .Values.gateway.loadBalancerIP }}/worker-1/hostname
+{{- if .Values.ingress.enabled }}
+  https://{{ .Values.ingress.host }}/worker-1/status
+  https://{{ .Values.ingress.host }}/worker-1/hostname
+{{- end }}
+
+Profiles ConfigMap:
+  {{ .Values.namespace.name }}/{{ .Values.gateway.profilesConfigMapName }}

@@ -1,0 +1,38 @@
+{{- if .Values.gateway.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.gateway.name | quote }}
+  namespace: {{ .Values.namespace.name | quote }}
+  labels:
+    app.kubernetes.io/name: {{ .Values.gateway.name | quote }}
+    underpass.ai/phase: {{ .Values.phase | quote }}
+spec:
+  type: LoadBalancer
+  loadBalancerIP: {{ .Values.gateway.loadBalancerIP | quote }}
+  ports:
+    - name: http
+      port: {{ .Values.gateway.port }}
+      targetPort: {{ .Values.gateway.targetPort }}
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: {{ printf "%s-local" .Values.gateway.name | quote }}
+  namespace: {{ .Values.namespace.name | quote }}
+  labels:
+    kubernetes.io/service-name: {{ .Values.gateway.name | quote }}
+    app.kubernetes.io/name: {{ .Values.gateway.name | quote }}
+    underpass.ai/phase: {{ .Values.phase | quote }}
+addressType: IPv4
+ports:
+  - name: http
+    protocol: TCP
+    port: {{ .Values.gateway.targetPort }}
+endpoints:
+  - addresses:
+      - {{ .Values.gateway.localEndpointIP | quote }}
+    conditions:
+      ready: true
+    nodeName: {{ .Values.gateway.localNodeName | quote }}
+{{- end }}

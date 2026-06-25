@@ -1,0 +1,11 @@
+.terraform/
+.terraform.lock.hcl
+terraform.tfstate
+terraform.tfstate.backup
+*.tfvars
+*.tfvars.json
+.secrets/
+terraform/*.auto.tfvars
+terraform/generated/*
+!terraform/generated/.gitkeep
+backups/

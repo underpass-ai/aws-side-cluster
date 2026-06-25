@@ -1,0 +1,18 @@
+[Unit]
+Description=AWS side cluster demand gateway user service
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/USER/ai/developents/aws-side-cluster
+Environment=AWS_REGION=eu-south-2
+Environment=HOME=/home/USER
+Environment=KUBECONFIG=/home/USER/.kube/config
+Environment=DEMAND_GATEWAY_PROFILES_CONFIGMAP=underpass-labs/aws-demand-gateway-profiles
+ExecStart=/home/USER/ai/developents/aws-side-cluster/scripts/demand-gateway.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

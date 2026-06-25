@@ -1,0 +1,88 @@
+{{- if .Values.certificates.enabled }}
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ .Values.certificates.selfSignedIssuerName | quote }}
+  namespace: {{ .Values.namespace.name | quote }}
+  labels:
+    app.kubernetes.io/name: {{ .Values.gateway.name | quote }}
+    underpass.ai/phase: {{ .Values.phase | quote }}
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ .Values.certificates.caCertificateName | quote }}
+  namespace: {{ .Values.namespace.name | quote }}
+  labels:
+    app.kubernetes.io/name: {{ .Values.gateway.name | quote }}
+    underpass.ai/phase: {{ .Values.phase | quote }}
+spec:
+  isCA: true
+  commonName: underpass-labs-demand-ca
+  secretName: {{ .Values.certificates.caSecretName | quote }}
+  duration: {{ .Values.certificates.duration | quote }}
+  renewBefore: {{ .Values.certificates.renewBefore | quote }}
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: {{ .Values.certificates.selfSignedIssuerName | quote }}
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ .Values.certificates.caIssuerName | quote }}
+  namespace: {{ .Values.namespace.name | quote }}
+  labels:
+    app.kubernetes.io/name: {{ .Values.gateway.name | quote }}
+    underpass.ai/phase: {{ .Values.phase | quote }}
+spec:
+  ca:
+    secretName: {{ .Values.certificates.caSecretName | quote }}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ .Values.certificates.serverCertificateName | quote }}
+  namespace: {{ .Values.namespace.name | quote }}
+  labels:
+    app.kubernetes.io/name: {{ .Values.gateway.name | quote }}
+    underpass.ai/phase: {{ .Values.phase | quote }}
+spec:
+  secretName: {{ .Values.ingress.tlsSecretName | quote }}
+  duration: {{ .Values.certificates.duration | quote }}
+  renewBefore: {{ .Values.certificates.renewBefore | quote }}
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  dnsNames:
+    - {{ .Values.ingress.host | quote }}
+  issuerRef:
+    name: {{ .Values.certificates.caIssuerName | quote }}
+    kind: Issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ .Values.certificates.clientCertificateName | quote }}
+  namespace: {{ .Values.namespace.name | quote }}
+  labels:
+    app.kubernetes.io/name: {{ .Values.gateway.name | quote }}
+    underpass.ai/phase: {{ .Values.phase | quote }}
+spec:
+  secretName: {{ .Values.certificates.clientSecretName | quote }}
+  duration: {{ .Values.certificates.duration | quote }}
+  renewBefore: {{ .Values.certificates.renewBefore | quote }}
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  commonName: underpass-labs-demand-client
+  usages:
+    - client auth
+  issuerRef:
+    name: {{ .Values.certificates.caIssuerName | quote }}
+    kind: Issuer
+{{- end }}

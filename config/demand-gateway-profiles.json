@@ -1,0 +1,32 @@
+{
+  "profiles": [
+    {
+      "name": "worker-1",
+      "prefix": "/worker-1",
+      "target_namespace": "underpass-labs",
+      "target_service": "aws-echo-worker-1",
+      "target_base_url": "http://192.168.1.244",
+      "node_selector": "underpass.ai/worker-index=1",
+      "desired_workers": 1,
+      "idle_seconds": 300,
+      "min_ready_nodes": 1,
+      "min_ready_endpoints": 1,
+      "aws_tag_key": "aws-side:index",
+      "aws_tag_value": "1"
+    },
+    {
+      "name": "worker-2",
+      "prefix": "/worker-2",
+      "target_namespace": "underpass-labs",
+      "target_service": "aws-echo-worker-2",
+      "target_base_url": "http://192.168.1.245",
+      "node_selector": "underpass.ai/worker-index=2",
+      "desired_workers": 1,
+      "idle_seconds": 300,
+      "min_ready_nodes": 1,
+      "min_ready_endpoints": 1,
+      "aws_tag_key": "aws-side:index",
+      "aws_tag_value": "2"
+    }
+  ]
+}

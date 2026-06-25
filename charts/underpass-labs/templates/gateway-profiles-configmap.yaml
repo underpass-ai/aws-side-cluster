@@ -1,0 +1,33 @@
+{{- if .Values.gateway.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.gateway.profilesConfigMapName | quote }}
+  namespace: {{ .Values.namespace.name | quote }}
+  labels:
+    app.kubernetes.io/name: {{ .Values.gateway.name | quote }}
+    underpass.ai/phase: {{ .Values.phase | quote }}
+data:
+  profiles.json: |
+    {
+      "profiles": [
+{{- $last := sub (len .Values.profiles) 1 }}
+{{- range $i, $profile := .Values.profiles }}
+        {
+          "name": {{ $profile.name | quote }},
+          "prefix": {{ $profile.routePrefix | quote }},
+          "target_namespace": {{ $.Values.namespace.name | quote }},
+          "target_service": {{ $profile.service.name | quote }},
+          "target_base_url": {{ printf "http://%s" $profile.service.loadBalancerIP | quote }},
+          "node_selector": {{ printf "underpass.ai/worker-index=%s" $profile.workerIndex | quote }},
+          "desired_workers": {{ $profile.desiredWorkers }},
+          "idle_seconds": {{ $profile.idleSeconds }},
+          "min_ready_nodes": {{ $profile.minReadyNodes }},
+          "min_ready_endpoints": {{ $profile.minReadyEndpoints }},
+          "aws_tag_key": {{ $profile.awsTagKey | quote }},
+          "aws_tag_value": {{ $profile.awsTagValue | quote }}
+        }{{- if lt $i $last }},{{ end }}
+{{- end }}
+      ]
+    }
+{{- end }}

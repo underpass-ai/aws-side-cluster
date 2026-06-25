@@ -1,0 +1,77 @@
+{{- range .Values.profiles }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .service.name | quote }}
+  namespace: {{ $.Values.namespace.name | quote }}
+  labels:
+    app.kubernetes.io/name: {{ .service.name | quote }}
+    underpass.ai/phase: {{ $.Values.phase | quote }}
+    underpass.ai/worker-index: {{ .workerIndex | quote }}
+  annotations:
+    underpass.ai/aws-tag-key: {{ .awsTagKey | quote }}
+    underpass.ai/aws-tag-value: {{ .awsTagValue | quote }}
+spec:
+  replicas: {{ .replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .service.name | quote }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ .service.name | quote }}
+        underpass.ai/phase: {{ $.Values.phase | quote }}
+        underpass.ai/worker-index: {{ .workerIndex | quote }}
+    spec:
+      nodeSelector:
+        underpass.ai/node-pool: {{ $.Values.nodePool | quote }}
+        underpass.ai/worker-index: {{ .workerIndex | quote }}
+      containers:
+        - name: echo
+          image: {{ printf "%s:%s" $.Values.image.repository $.Values.image.tag | quote }}
+          imagePullPolicy: {{ $.Values.image.pullPolicy | quote }}
+          args:
+            - netexec
+            - --http-port=8080
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /hostname
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /hostname
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+{{ toYaml $.Values.resources | indent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .service.name | quote }}
+  namespace: {{ $.Values.namespace.name | quote }}
+  labels:
+    app.kubernetes.io/name: {{ .service.name | quote }}
+    underpass.ai/phase: {{ $.Values.phase | quote }}
+    underpass.ai/worker-index: {{ .workerIndex | quote }}
+  annotations:
+    underpass.ai/aws-tag-key: {{ .awsTagKey | quote }}
+    underpass.ai/aws-tag-value: {{ .awsTagValue | quote }}
+spec:
+  type: LoadBalancer
+  loadBalancerIP: {{ .service.loadBalancerIP | quote }}
+  externalTrafficPolicy: Cluster
+  selector:
+    app.kubernetes.io/name: {{ .service.name | quote }}
+  ports:
+    - name: http
+      port: {{ .service.port }}
+      targetPort: {{ .service.targetPort | quote }}
+{{- end }}

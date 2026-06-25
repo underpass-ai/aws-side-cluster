@@ -1,0 +1,97 @@
+namespace:
+  create: true
+  name: underpass-labs
+
+phase: phase1
+nodePool: aws-poc
+
+image:
+  repository: registry.k8s.io/e2e-test-images/agnhost
+  tag: "2.53"
+  pullPolicy: IfNotPresent
+
+resources:
+  requests:
+    cpu: 20m
+    memory: 32Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+gateway:
+  enabled: true
+  name: aws-demand-gateway
+  loadBalancerIP: 192.168.1.243
+  localEndpointIP: 192.168.1.56
+  localNodeName: wrx80-node1
+  port: 80
+  targetPort: 18080
+  profilesConfigMapName: aws-demand-gateway-profiles
+
+ingress:
+  enabled: true
+  className: nginx
+  host: aws-demand.underpassai.com
+  tlsSecretName: aws-demand-gateway-tls
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: HTTP
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+  mtls:
+    enabled: false
+    authTLSSecret: underpass-labs/aws-demand-ca
+    verifyDepth: "1"
+
+certificates:
+  enabled: true
+  selfSignedIssuerName: aws-demand-selfsigned
+  caCertificateName: aws-demand-ca
+  caSecretName: aws-demand-ca
+  caIssuerName: aws-demand-ca-issuer
+  serverCertificateName: aws-demand-gateway-tls
+  clientCertificateName: aws-demand-client
+  clientSecretName: aws-demand-client-tls
+  duration: 2160h
+  renewBefore: 360h
+
+poolEcho:
+  enabled: true
+  name: aws-echo
+  replicas: 2
+  loadBalancerIP: 192.168.1.242
+  service:
+    port: 80
+    targetPort: http
+
+profiles:
+  - name: worker-1
+    routePrefix: /worker-1
+    workerIndex: "1"
+    awsTagKey: aws-side:index
+    awsTagValue: "1"
+    desiredWorkers: 1
+    minReadyNodes: 1
+    minReadyEndpoints: 1
+    idleSeconds: 300
+    service:
+      name: aws-echo-worker-1
+      loadBalancerIP: 192.168.1.244
+      port: 80
+      targetPort: http
+    replicas: 1
+
+  - name: worker-2
+    routePrefix: /worker-2
+    workerIndex: "2"
+    awsTagKey: aws-side:index
+    awsTagValue: "2"
+    desiredWorkers: 1
+    minReadyNodes: 1
+    minReadyEndpoints: 1
+    idleSeconds: 300
+    service:
+      name: aws-echo-worker-2
+      loadBalancerIP: 192.168.1.245
+      port: 80
+      targetPort: http
+    replicas: 1

@@ -1,0 +1,36 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ .Values.gateway.name | quote }}
+  namespace: {{ .Values.namespace.name | quote }}
+  labels:
+    app.kubernetes.io/name: {{ .Values.gateway.name | quote }}
+    underpass.ai/phase: {{ .Values.phase | quote }}
+  annotations:
+{{- range $key, $value := .Values.ingress.annotations }}
+    {{ $key }}: {{ $value | quote }}
+{{- end }}
+{{- if .Values.ingress.mtls.enabled }}
+    nginx.ingress.kubernetes.io/auth-tls-secret: {{ .Values.ingress.mtls.authTLSSecret | quote }}
+    nginx.ingress.kubernetes.io/auth-tls-verify-client: "on"
+    nginx.ingress.kubernetes.io/auth-tls-verify-depth: {{ .Values.ingress.mtls.verifyDepth | quote }}
+{{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className | quote }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ .Values.gateway.name | quote }}
+                port:
+                  number: {{ .Values.gateway.port }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host | quote }}
+      secretName: {{ .Values.ingress.tlsSecretName | quote }}
+{{- end }}

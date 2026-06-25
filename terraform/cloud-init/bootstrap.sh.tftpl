@@ -1,0 +1,386 @@
+#!/bin/bash
+set -euo pipefail
+
+BOOTSTRAP_DIR="/opt/aws-side-cluster"
+BOOTSTRAP_SCRIPT="$BOOTSTRAP_DIR/bootstrap.sh"
+SERVICE_FILE="/etc/systemd/system/aws-side-cluster-bootstrap.service"
+
+mkdir -p "$BOOTSTRAP_DIR"
+cat > "$BOOTSTRAP_SCRIPT" <<'SCRIPT'
+#!/bin/bash
+set -euo pipefail
+
+BOOTSTRAP_DIR="/opt/aws-side-cluster"
+export AWS_DEFAULT_REGION='${aws_region}'
+
+S3_BUCKET='${s3_bucket}'
+S3_KEY='${s3_key}'
+HOME_USER='${home_user}'
+DOWNLOAD_FILENAME='${download_filename}'
+RESTORE_TIER='${restore_tier}'
+RESTORE_DAYS='${restore_days}'
+POLL_SECONDS='${restore_poll_seconds}'
+MAX_WAIT_SECONDS='${restore_max_wait_seconds}'
+
+WIREGUARD_ENABLED='${worker_wireguard_enabled}'
+WG_PORT='${worker_wireguard_port}'
+WG_ADDRESS='${worker_wireguard_address}'
+WG_PRIVATE_KEY='${worker_wireguard_private_key}'
+LOCAL_WG_PUBLIC_KEY='${local_wireguard_public_key}'
+LOCAL_WG_ENDPOINT='${local_wireguard_endpoint}'
+WG_PERSISTENT_KEEPALIVE='${worker_wireguard_persistent_keepalive_seconds}'
+LOCAL_ALLOWED_IPS='${local_cluster_allowed_ips}'
+
+KUBERNETES_WORKER_ENABLED='${kubernetes_worker_enabled}'
+KUBERNETES_MINOR_VERSION='${kubernetes_minor_version}'
+KUBEADM_JOIN_COMMAND='${kubeadm_join_command}'
+KUBELET_NODE_IP='${kubelet_node_ip}'
+NODE_LABEL_ARGS='${node_label_args}'
+NODE_TAINT_ARGS='${node_taint_args}'
+
+HOME_DIR="$(getent passwd "$HOME_USER" | cut -d: -f6)"
+if [[ -z "$HOME_DIR" ]]; then
+  echo "User $HOME_USER does not exist" >&2
+  exit 1
+fi
+
+TARGET="$HOME_DIR/$DOWNLOAD_FILENAME"
+S3_MARKER="$HOME_DIR/.aws-side-cluster-bootstrap.done"
+LOG_FILE="/var/log/aws-side-cluster-bootstrap.log"
+
+exec > >(tee -a "$LOG_FILE") 2>&1
+
+install_common_packages() {
+  local packages=(awscli)
+
+  if [[ "$WIREGUARD_ENABLED" == "true" ]]; then
+    packages+=(wireguard-tools iproute-tc)
+  fi
+
+  if [[ "$KUBERNETES_WORKER_ENABLED" == "true" ]]; then
+    packages+=(containerd conntrack-tools socat ethtool iproute-tc)
+  fi
+
+  echo "Installing common packages: $${packages[*]}"
+  dnf install -y "$${packages[@]}"
+}
+
+head_value() {
+  local query="$1"
+  aws s3api head-object \
+    --bucket "$S3_BUCKET" \
+    --key "$S3_KEY" \
+    --query "$query" \
+    --output text
+}
+
+restore_object() {
+  local output
+  if output="$(aws s3api restore-object "$@" 2>&1)"; then
+    echo "Restore request accepted"
+    return 0
+  fi
+
+  case "$output" in
+    *RestoreAlreadyInProgress*|*ObjectAlreadyInActiveTierError*)
+      echo "$output"
+      return 0
+      ;;
+    *)
+      echo "$output" >&2
+      return 1
+      ;;
+  esac
+}
+
+restore_available() {
+  local storage_class archive_status restore_header
+  storage_class="$(head_value 'StorageClass')"
+  archive_status="$(head_value 'ArchiveStatus')"
+  restore_header="$(head_value 'Restore')"
+
+  echo "S3 status: StorageClass=$storage_class ArchiveStatus=$archive_status Restore=$restore_header"
+
+  case "$storage_class" in
+    GLACIER|DEEP_ARCHIVE)
+      [[ "$restore_header" == *'ongoing-request="false"'* ]]
+      ;;
+    INTELLIGENT_TIERING)
+      [[ "$archive_status" != "ARCHIVE_ACCESS" && "$archive_status" != "DEEP_ARCHIVE_ACCESS" ]]
+      ;;
+    *)
+      return 0
+      ;;
+  esac
+}
+
+request_restore_if_needed() {
+  local storage_class archive_status restore_header
+  storage_class="$(head_value 'StorageClass')"
+  archive_status="$(head_value 'ArchiveStatus')"
+  restore_header="$(head_value 'Restore')"
+
+  if [[ "$storage_class" == "GLACIER" || "$storage_class" == "DEEP_ARCHIVE" ]]; then
+    if [[ "$restore_header" == *'ongoing-request="false"'* ]]; then
+      return 0
+    fi
+
+    echo "Requesting Glacier restore: tier=$RESTORE_TIER days=$RESTORE_DAYS"
+    restore_object \
+      --bucket "$S3_BUCKET" \
+      --key "$S3_KEY" \
+      --restore-request "{\"Days\":$RESTORE_DAYS,\"GlacierJobParameters\":{\"Tier\":\"$RESTORE_TIER\"}}"
+    return 0
+  fi
+
+  if [[ "$storage_class" == "INTELLIGENT_TIERING" && ( "$archive_status" == "ARCHIVE_ACCESS" || "$archive_status" == "DEEP_ARCHIVE_ACCESS" ) ]]; then
+    echo "Requesting Intelligent-Tiering archive restore"
+    restore_object \
+      --bucket "$S3_BUCKET" \
+      --key "$S3_KEY" \
+      --restore-request '{}'
+  fi
+}
+
+download_s3_once() {
+  if [[ -f "$S3_MARKER" && -f "$TARGET" ]]; then
+    echo "S3 bootstrap already completed; marker=$S3_MARKER target=$TARGET"
+    return 0
+  fi
+
+  local started_at
+  started_at="$(date +%s)"
+  request_restore_if_needed
+
+  until restore_available; do
+    if [[ "$MAX_WAIT_SECONDS" != "0" ]]; then
+      local now elapsed
+      now="$(date +%s)"
+      elapsed="$((now - started_at))"
+      if (( elapsed >= MAX_WAIT_SECONDS )); then
+        echo "Timed out waiting for S3 restore after $${elapsed}s" >&2
+        exit 1
+      fi
+    fi
+
+    echo "Object is not ready yet; sleeping $${POLL_SECONDS}s"
+    sleep "$POLL_SECONDS"
+  done
+
+  echo "Downloading s3://$S3_BUCKET/$S3_KEY to $TARGET"
+  aws s3 cp "s3://$S3_BUCKET/$S3_KEY" "$TARGET"
+  chown "$HOME_USER:$HOME_USER" "$TARGET"
+  touch "$S3_MARKER"
+  chown "$HOME_USER:$HOME_USER" "$S3_MARKER"
+}
+
+configure_wireguard() {
+  if [[ "$WIREGUARD_ENABLED" != "true" ]]; then
+    return 0
+  fi
+
+  if [[ -z "$WG_ADDRESS" || -z "$WG_PRIVATE_KEY" || -z "$LOCAL_WG_PUBLIC_KEY" ]]; then
+    echo "WireGuard is enabled but key/address variables are missing" >&2
+    exit 1
+  fi
+
+  mkdir -p /etc/wireguard
+  chmod 0700 /etc/wireguard
+  umask 077
+  cat > /etc/wireguard/aws-worker.conf <<WGCONF
+[Interface]
+Address = $WG_ADDRESS/32
+ListenPort = $WG_PORT
+PrivateKey = $WG_PRIVATE_KEY
+
+[Peer]
+PublicKey = $LOCAL_WG_PUBLIC_KEY
+AllowedIPs = $LOCAL_ALLOWED_IPS
+WGCONF
+
+  if [[ -n "$LOCAL_WG_ENDPOINT" ]]; then
+    echo "Endpoint = $LOCAL_WG_ENDPOINT" >> /etc/wireguard/aws-worker.conf
+  fi
+
+  if [[ -n "$LOCAL_WG_ENDPOINT" && "$WG_PERSISTENT_KEEPALIVE" != "0" ]]; then
+    echo "PersistentKeepalive = $WG_PERSISTENT_KEEPALIVE" >> /etc/wireguard/aws-worker.conf
+  fi
+
+  systemctl enable --now wg-quick@aws-worker.service
+}
+
+configure_kubernetes_api_hosts() {
+  if [[ "$KUBERNETES_WORKER_ENABLED" != "true" || -z "$KUBEADM_JOIN_COMMAND" ]]; then
+    return 0
+  fi
+
+  local endpoint api_host
+  endpoint="$(awk '{for(i=1;i<=NF;i++) if ($i == "join") {print $(i+1); exit}}' <<< "$KUBEADM_JOIN_COMMAND")"
+  api_host="$${endpoint%:*}"
+
+  if [[ "$api_host" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] && ! grep -Eq '(^|[[:space:]])k8s\.local([[:space:]]|$)' /etc/hosts; then
+    echo "$api_host k8s.local" >> /etc/hosts
+  fi
+}
+
+configure_containerd() {
+  mkdir -p /etc/containerd
+  if [[ ! -f /etc/containerd/config.toml ]]; then
+    containerd config default > /etc/containerd/config.toml
+  fi
+  sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+  systemctl enable --now containerd
+}
+
+configure_kubernetes_kernel() {
+  modprobe overlay || true
+  modprobe br_netfilter || true
+
+  cat > /etc/modules-load.d/k8s.conf <<'EOF'
+overlay
+br_netfilter
+EOF
+
+  cat > /etc/sysctl.d/99-kubernetes-cri.conf <<'EOF'
+net.bridge.bridge-nf-call-iptables = 1
+net.bridge.bridge-nf-call-ip6tables = 1
+net.ipv4.ip_forward = 1
+EOF
+
+  sysctl --system
+  swapoff -a || true
+}
+
+install_kubernetes_packages() {
+  cat > /etc/yum.repos.d/kubernetes.repo <<K8SREPO
+[kubernetes]
+name=Kubernetes
+baseurl=https://pkgs.k8s.io/core:/stable:/$KUBERNETES_MINOR_VERSION/rpm/
+enabled=1
+gpgcheck=1
+gpgkey=https://pkgs.k8s.io/core:/stable:/$KUBERNETES_MINOR_VERSION/rpm/repodata/repomd.xml.key
+K8SREPO
+
+  dnf install -y kubelet kubeadm kubectl
+
+  mkdir -p /etc/sysconfig
+  local kubelet_args=()
+  if [[ -n "$KUBELET_NODE_IP" ]]; then
+    kubelet_args+=("--node-ip=$KUBELET_NODE_IP")
+  fi
+  if [[ -n "$NODE_LABEL_ARGS" ]]; then
+    kubelet_args+=("--node-labels=$NODE_LABEL_ARGS")
+  fi
+  if [[ -n "$NODE_TAINT_ARGS" ]]; then
+    kubelet_args+=("--register-with-taints=$NODE_TAINT_ARGS")
+  fi
+  echo "KUBELET_EXTRA_ARGS=\"$${kubelet_args[*]}\"" > /etc/sysconfig/kubelet
+  systemctl enable kubelet
+}
+
+write_join_service() {
+  cat > "$BOOTSTRAP_DIR/kubeadm-join.sh" <<'JOIN'
+#!/bin/bash
+set -euo pipefail
+
+KUBEADM_JOIN_COMMAND='${kubeadm_join_command}'
+NODE_LABEL_ARGS='${node_label_args}'
+NODE_TAINT_ARGS='${node_taint_args}'
+
+if [[ -f /etc/kubernetes/kubelet.conf ]]; then
+  echo "Node already joined"
+  exit 0
+fi
+
+if [[ -z "$KUBEADM_JOIN_COMMAND" ]]; then
+  echo "kubeadm_join_command is empty; packages installed but node not joined"
+  exit 0
+fi
+
+endpoint="$(awk '{for(i=1;i<=NF;i++) if ($i == "join") {print $(i+1); exit}}' <<< "$KUBEADM_JOIN_COMMAND")"
+host="$${endpoint%:*}"
+port="$${endpoint##*:}"
+
+until timeout 3 bash -c "cat < /dev/null > /dev/tcp/$host/$port" 2>/dev/null; do
+  echo "Waiting for kube-apiserver at $endpoint"
+  sleep 20
+done
+
+echo "Joining Kubernetes cluster"
+bash -lc "$KUBEADM_JOIN_COMMAND"
+JOIN
+
+  chmod 0700 "$BOOTSTRAP_DIR/kubeadm-join.sh"
+
+  cat > /etc/systemd/system/aws-side-cluster-kubeadm-join.service <<SERVICE
+[Unit]
+Description=Join local Kubernetes cluster over WireGuard
+After=network-online.target containerd.service wg-quick@aws-worker.service
+Wants=network-online.target wg-quick@aws-worker.service
+Requires=containerd.service
+
+[Service]
+Type=oneshot
+ExecStart=$BOOTSTRAP_DIR/kubeadm-join.sh
+RemainAfterExit=yes
+Restart=on-failure
+RestartSec=60
+TimeoutStartSec=0
+StandardOutput=journal+console
+StandardError=journal+console
+
+[Install]
+WantedBy=multi-user.target
+SERVICE
+
+  systemctl daemon-reload
+  systemctl enable aws-side-cluster-kubeadm-join.service
+  systemctl start --no-block aws-side-cluster-kubeadm-join.service
+}
+
+configure_kubernetes_worker() {
+  if [[ "$KUBERNETES_WORKER_ENABLED" != "true" ]]; then
+    return 0
+  fi
+
+  configure_kubernetes_kernel
+  configure_containerd
+  install_kubernetes_packages
+  write_join_service
+}
+
+install_common_packages
+download_s3_once
+configure_wireguard
+configure_kubernetes_api_hosts
+configure_kubernetes_worker
+
+echo "Bootstrap completed"
+systemctl disable aws-side-cluster-bootstrap.service || true
+SCRIPT
+
+chmod 0755 "$BOOTSTRAP_SCRIPT"
+
+cat > "$SERVICE_FILE" <<SERVICE
+[Unit]
+Description=Bootstrap EC2 worker for aws-side-cluster
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=$BOOTSTRAP_SCRIPT
+RemainAfterExit=no
+Restart=on-failure
+RestartSec=60
+TimeoutStartSec=0
+StandardOutput=journal+console
+StandardError=journal+console
+
+[Install]
+WantedBy=multi-user.target
+SERVICE
+
+systemctl daemon-reload
+systemctl enable aws-side-cluster-bootstrap.service
+systemctl start --no-block aws-side-cluster-bootstrap.service

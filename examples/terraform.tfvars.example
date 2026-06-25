@@ -1,0 +1,71 @@
+aws_region = "eu-south-2"
+
+name_prefix    = "aws-side-poc"
+instance_count = 2
+
+# t4g.nano es mas barata, pero t4g.micro es el minimo practico para kubeadm worker.
+instance_type    = "t4g.micro"
+ami_architecture = "arm64"
+
+# VPC minima para la POC. La instancia necesita salida a S3/AWS APIs.
+create_vpc         = true
+vpc_cidr           = "10.80.0.0/16"
+public_subnet_cidr = "10.80.1.0/24"
+
+# Dejar vacio si no quieres SSH. Para entrar, mejor SSM o limitar a tu IP /32.
+allowed_ssh_cidrs = []
+allowed_wireguard_cidrs = ["0.0.0.0/0"]
+associate_public_ip_address = true
+
+# Opcional, solo si quieres SSH.
+key_name = null
+
+# Kubernetes worker sobre WireGuard.
+# Ejecuta scripts/generate-worker-secrets.sh para crear terraform/wireguard.auto.tfvars.
+worker_wireguard_enabled = true
+worker_wireguard_cidr    = "10.90.0.0/24"
+worker_wireguard_port    = 51820
+# Activator mode: workers initiate WireGuard to the local/VPC network endpoint.
+# This name must not point to the public web host unless that host forwards UDP/51820.
+local_wireguard_endpoint = "aws-vpc-wg.underpassai.com:51820"
+worker_wireguard_persistent_keepalive_seconds = 25
+
+# Ejecuta:
+# KUBEADM_JOIN_ENDPOINT=192.168.1.56:6443 scripts/create-kubeadm-join-command.sh
+# y pega aqui el resultado.
+kubernetes_worker_enabled = true
+kubernetes_minor_version  = "v1.35"
+kubeadm_join_command      = ""
+
+local_cluster_allowed_cidrs = [
+  "10.90.0.1/32",
+  "192.168.1.56/32",
+  "10.96.0.0/12",
+  "10.244.0.0/16"
+]
+
+kubernetes_node_labels = {
+  "underpass.ai/node-pool" = "aws-poc"
+  "underpass.ai/phase"     = "phase1"
+}
+
+kubernetes_node_taints = []
+
+# ZIP random creado por Terraform y subido a S3.
+create_bootstrap_bucket     = true
+bootstrap_bucket_name       = null
+bootstrap_zip_key           = "bootstrap/random-payload.zip"
+bootstrap_zip_storage_class = "GLACIER_IR"
+
+# Alternativa: usar un bucket/objeto existente.
+# create_bootstrap_bucket = false
+# s3_bucket = "mi-bucket"
+# s3_key    = "path/al/archivo.zip"
+
+# Para Glacier Flexible Retrieval / Deep Archive.
+restore_tier = "Standard"
+restore_days = 1
+
+tags = {
+  Environment = "poc"
+}
