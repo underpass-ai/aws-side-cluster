@@ -10,6 +10,8 @@ Environment=AWS_REGION=eu-south-2
 Environment=HOME=/home/USER
 Environment=KUBECONFIG=/home/USER/.kube/config
 Environment=DEMAND_GATEWAY_PROFILES_CONFIGMAP=underpass-labs/aws-demand-gateway-profiles
+# Sync de endpoints WireGuard PC->EC2 en cada wake (wg set via sudoers NOPASSWD acotado).
+Environment=DEMAND_GATEWAY_SYNC_COMMAND=scripts/wg-sync-ec2-endpoints.sh
 ExecStart=/home/USER/ai/developents/aws-side-cluster/scripts/demand-gateway.py
 Restart=on-failure
 RestartSec=5

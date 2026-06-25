@@ -1,0 +1,6 @@
+# aws-side-cluster: el demand-gateway (systemd --user, rootless) y
+# scripts/wg-sync-ec2-endpoints.sh necesitan 'wg set/show' para fijar el
+# endpoint WireGuard PC->EC2 (IP publica dinamica del worker) en cada wake.
+# Acotado al binario wg y sin password para no romper el modelo rootless.
+# Instalar con: sudo install -m 0440 -o root -g root sudoers.d/aws-side-wg /etc/sudoers.d/aws-side-wg
+USER ALL=(root) NOPASSWD: /usr/bin/wg

@@ -237,7 +237,7 @@ def kubectl_json(args):
 
 
 def ready_condition(item):
-    for condition in item.get("status", {}).get("conditions", []):
+    for condition in (item.get("status") or {}).get("conditions") or []:
         if condition.get("type") == "Ready":
             return condition.get("status") == "True"
     return False
@@ -247,7 +247,7 @@ def ready_aws_nodes(profile):
     data = kubectl_json(["get", "nodes", "-l", profile.node_selector])
     return [
         item["metadata"]["name"]
-        for item in data.get("items", [])
+        for item in (data.get("items") or [])
         if ready_condition(item)
     ]
 
@@ -262,12 +262,12 @@ def ready_service_endpoints(profile):
         f"kubernetes.io/service-name={profile.target_service}",
     ])
     endpoints = []
-    for item in data.get("items", []):
-        for endpoint in item.get("endpoints", []):
-            conditions = endpoint.get("conditions", {})
+    for item in (data.get("items") or []):
+        for endpoint in (item.get("endpoints") or []):
+            conditions = endpoint.get("conditions") or {}
             if conditions.get("ready", True) is False:
                 continue
-            endpoints.extend(endpoint.get("addresses", []))
+            endpoints.extend(endpoint.get("addresses") or [])
     return endpoints
 
 
