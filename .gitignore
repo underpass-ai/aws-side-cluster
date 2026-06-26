@@ -9,3 +9,5 @@ terraform/*.auto.tfvars
 terraform/generated/*
 !terraform/generated/.gitkeep
 backups/
+__pycache__/
+*.pyc
