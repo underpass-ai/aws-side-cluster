@@ -137,6 +137,7 @@ resource "aws_instance" "worker" {
     kubelet_node_ip                               = var.worker_wireguard_enabled ? cidrhost(var.worker_wireguard_cidr, count.index + 11) : ""
     node_label_args                               = replace(join(",", compact([local.base_node_label_args, "underpass.ai/worker-index=${count.index + 1}"])), "'", "'\"'\"'")
     node_taint_args                               = replace(local.node_taint_args, "'", "'\"'\"'")
+    node_name                                     = "aws-worker-${count.index + 1}"
   })
 
   metadata_options {

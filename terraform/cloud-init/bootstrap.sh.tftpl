@@ -286,6 +286,7 @@ set -euo pipefail
 KUBEADM_JOIN_COMMAND='${kubeadm_join_command}'
 NODE_LABEL_ARGS='${node_label_args}'
 NODE_TAINT_ARGS='${node_taint_args}'
+NODE_NAME='${node_name}'
 
 if [[ -f /etc/kubernetes/kubelet.conf ]]; then
   echo "Node already joined"
@@ -307,7 +308,11 @@ until timeout 3 bash -c "cat < /dev/null > /dev/tcp/$host/$port" 2>/dev/null; do
 done
 
 echo "Joining Kubernetes cluster"
-bash -lc "$KUBEADM_JOIN_COMMAND"
+if [[ -n "$NODE_NAME" ]]; then
+  bash -lc "$KUBEADM_JOIN_COMMAND --node-name=$NODE_NAME"
+else
+  bash -lc "$KUBEADM_JOIN_COMMAND"
+fi
 JOIN
 
   chmod 0700 "$BOOTSTRAP_DIR/kubeadm-join.sh"
