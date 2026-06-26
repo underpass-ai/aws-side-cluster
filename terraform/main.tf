@@ -133,7 +133,7 @@ resource "aws_instance" "worker" {
     local_cluster_allowed_ips                     = replace(join(",", var.local_cluster_allowed_cidrs), "'", "'\"'\"'")
     kubernetes_worker_enabled                     = var.kubernetes_worker_enabled ? "true" : "false"
     kubernetes_minor_version                      = replace(var.kubernetes_minor_version, "'", "'\"'\"'")
-    kubeadm_join_command                          = replace(var.kubeadm_join_command, "'", "'\"'\"'")
+    kubeadm_join_command                          = replace(local.effective_join_command, "'", "'\"'\"'")
     kubelet_node_ip                               = var.worker_wireguard_enabled ? cidrhost(var.worker_wireguard_cidr, count.index + 11) : ""
     node_label_args                               = replace(join(",", compact([local.base_node_label_args, "underpass.ai/worker-index=${count.index + 1}"])), "'", "'\"'\"'")
     node_taint_args                               = replace(local.node_taint_args, "'", "'\"'\"'")
@@ -164,7 +164,14 @@ resource "aws_instance" "worker" {
     }
   )
 
+  # El bootstrap token debe existir en el cluster antes de que el EC2 haga join.
+  depends_on = [kubernetes_secret.bootstrap_token]
+
   lifecycle {
+    # La subnet ya hace map_public_ip_on_launch=true; el atributo a nivel de
+    # instancia se lee como false en el state -> evitar replace perpetuo.
+    ignore_changes = [associate_public_ip_address]
+
     precondition {
       condition     = !var.worker_wireguard_enabled || var.local_wireguard_public_key != ""
       error_message = "local_wireguard_public_key is required when worker_wireguard_enabled is true. Run scripts/generate-worker-secrets.sh first."

@@ -18,9 +18,17 @@ terraform {
       source  = "hashicorp/random"
       version = "~> 3.7"
     }
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = "~> 2.30"
+    }
   }
 }
 
 provider "aws" {
   region = var.aws_region
+}
+
+provider "kubernetes" {
+  config_path = var.kubeconfig_path
 }
