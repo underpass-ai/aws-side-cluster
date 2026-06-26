@@ -1,0 +1,44 @@
+{{- if .Values.ingress.enabled }}
+{{- $root := . -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: local-llm
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    app.kubernetes.io/part-of: local-llm
+  annotations:
+    # ruta por modelo /<name>/... -> upstream /...  (rewrite del prefijo)
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    # respuestas LLM lentas y largas: timeouts altos, sin limite de body, buffering off
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    {{- with .Values.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host | quote }}
+      secretName: {{ .Values.ingress.tls.secretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          {{- range $m := .Values.models }}
+          {{- $svc := merge (dict) ($m.service | default dict) $root.Values.defaults.service }}
+          - path: /{{ $m.name }}(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: vllm-{{ $m.name }}
+                port:
+                  number: {{ $svc.port | default 8000 }}
+          {{- end }}
+{{- end }}

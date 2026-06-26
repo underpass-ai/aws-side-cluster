@@ -1,0 +1,91 @@
+# Sirve N modelos vLLM en las 4 GPUs locales (RTX 3090, nodo control-plane),
+# 1 GPU por modelo. Pensado para el ns del POC (underpass-labs).
+# Cada pod pide nvidia.com/gpu: 1; el device-plugin reparte una GPU distinta.
+
+namespace:
+  create: false          # underpass-labs ya existe (lo crea charts/underpass-labs)
+  name: underpass-labs
+
+image:
+  repository: vllm/vllm-openai
+  tag: "v0.20.0"         # >= 0.19 para Qwen3.6 / GLM-4.7 / gemma-4
+  pullPolicy: IfNotPresent
+
+# Seleccion estilo MIG: en vez de elegir un perfil MIG, se elige el TIPO de GPU
+# por las labels nativas de NVIDIA (gpu-feature-discovery, ya las pone el GPU
+# Operator). El device-plugin asigna 1 GPU libre de ese tipo a cada pod
+# (resources.limits nvidia.com/gpu: 1). Sin etiquetar nada a mano, sin MIG.
+# Otras labels GFD utiles: nvidia.com/gpu.memory, nvidia.com/gpu.family,
+# nvidia.com/gpu.count, nvidia.com/gpu.compute.major. Override por modelo con
+# 'nodeSelector:' dentro de cada model (p.ej. otro nvidia.com/gpu.product).
+nodeSelector:
+  nvidia.com/gpu.product: NVIDIA-GeForce-RTX-3090
+tolerations:
+  - key: node-role.kubernetes.io/control-plane
+    operator: Exists
+    effect: NoSchedule
+
+# Cache HF compartida (evita re-descargar ~60GB). hostPath en el nodo.
+modelCache:
+  hostPath: /opt/llm-models     # vacío "" => emptyDir efímero
+shmSize: "8Gi"
+
+# Token HF (gated). Secret 'huggingface-token' key 'HF_TOKEN' (copiado de
+# underpass-runtime). optional=true: si falta, los repos no-gated bajan igual.
+hfTokenSecret:
+  name: huggingface-token
+  key: HF_TOKEN
+
+# Ingress DEDICADO de los modelos (recurso propio del chart, su propio host;
+# NO se mezcla con el ingress del POC aws-demand). Ruta por modelo:
+#   http://<host>/<model.name>/v1/chat/completions
+# El host debe resolver a 192.168.1.241 (ingress-nginx/MetalLB) por DNS interno
+# o /etc/hosts. NO añadir a la zona publica de underpassai.com.
+ingress:
+  enabled: true
+  className: nginx
+  host: local-llm.underpassai.com
+  annotations: {}
+  tls:
+    enabled: false
+    secretName: local-llm-tls
+
+# Defaults por modelo (override con los mismos campos dentro de cada model).
+defaults:
+  gpuMemoryUtilization: 0.92
+  maxModelLen: 32768
+  quantization: ""              # "" => vLLM autodetecta del repo (AWQ/compressed-tensors)
+  extraArgs: []                 # vacio por defecto; el tool-calling se activa por modelo
+  resources:
+    limits:
+      nvidia.com/gpu: "1"        # 1 GPU por modelo
+    requests:
+      cpu: "2"
+      memory: 8Gi
+  service:
+    type: ClusterIP              # o LoadBalancer + loadBalancerIP (MetalLB .246-.249)
+    port: 8000
+
+# Lineup agéntico: 1 Qwen + 3 vendors distintos (junio 2026). Cambiar a gusto.
+models:
+  - name: qwen3-coder
+    repo: QuantTrio/Qwen3-Coder-30B-A3B-Instruct-AWQ
+    servedName: qwen3-coder-30b
+    maxModelLen: 65536
+    extraArgs: [--enable-auto-tool-choice, --tool-call-parser, qwen3_coder]
+    # service: { type: LoadBalancer, loadBalancerIP: 192.168.1.246 }
+
+  - name: glm47-flash
+    repo: cyankiwi/GLM-4.7-Flash-AWQ-4bit
+    servedName: glm-4.7-flash
+    extraArgs: [--enable-auto-tool-choice, --tool-call-parser, glm45, --reasoning-parser, glm45]
+
+  - name: devstral
+    repo: cyankiwi/Devstral-Small-2-24B-Instruct-2512-AWQ-4bit
+    servedName: devstral-small-24b
+    extraArgs: [--enable-auto-tool-choice, --tool-call-parser, mistral]
+
+  - name: gemma4
+    repo: cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit
+    servedName: gemma-4-26b
+    extraArgs: []   # gemma no tiene tool-parser dedicado en vLLM aun; servir plano

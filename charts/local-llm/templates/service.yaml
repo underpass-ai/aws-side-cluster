@@ -1,0 +1,24 @@
+{{- $root := . -}}
+{{- range $m := .Values.models }}
+{{- $svc := merge (dict) ($m.service | default dict) $root.Values.defaults.service }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm-{{ $m.name }}
+  namespace: {{ $root.Values.namespace.name }}
+  labels:
+    app.kubernetes.io/name: vllm-{{ $m.name }}
+    app.kubernetes.io/part-of: local-llm
+spec:
+  type: {{ $svc.type | default "ClusterIP" }}
+  {{- if and (eq ($svc.type | default "ClusterIP") "LoadBalancer") (hasKey $svc "loadBalancerIP") }}
+  loadBalancerIP: {{ $svc.loadBalancerIP | quote }}
+  {{- end }}
+  selector:
+    app.kubernetes.io/name: vllm-{{ $m.name }}
+  ports:
+    - name: http
+      port: {{ $svc.port | default 8000 }}
+      targetPort: http
+{{- end }}

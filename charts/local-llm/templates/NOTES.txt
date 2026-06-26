@@ -1,0 +1,28 @@
+
+local-llm desplegado en namespace {{ .Values.namespace.name }} ({{ len .Values.models }} modelo(s), 1 GPU c/u):
+{{- range .Values.models }}
+  - {{ .servedName | default .name }}
+      svc:     vllm-{{ .name }}:{{ $.Values.defaults.service.port }}
+      repo:    {{ .repo }}
+{{- if $.Values.ingress.enabled }}
+      ingress: http://{{ $.Values.ingress.host }}/{{ .name }}/v1
+{{- end }}
+{{- end }}
+
+Seleccion de GPU (estilo MIG): por label NVIDIA {{ (.Values.nodeSelector | toYaml | trim) }}
+
+Probar (OpenAI-compatible):
+{{- $m0 := (index .Values.models 0) }}
+  kubectl -n {{ .Values.namespace.name }} port-forward svc/vllm-{{ $m0.name }} 8000:{{ .Values.defaults.service.port }}
+  curl localhost:8000/v1/models
+  curl localhost:8000/v1/chat/completions -H 'content-type: application/json' \
+    -d '{"model":"{{ $m0.servedName | default $m0.name }}","messages":[{"role":"user","content":"hola"}]}'
+{{- if .Values.ingress.enabled }}
+
+Via ingress (host {{ .Values.ingress.host }} -> 192.168.1.241, DNS interno):
+  curl http://{{ .Values.ingress.host }}/{{ $m0.name }}/v1/chat/completions -H 'content-type: application/json' \
+    -d '{"model":"{{ $m0.servedName | default $m0.name }}","messages":[{"role":"user","content":"hola"}]}'
+{{- end }}
+
+Primer arranque: cada modelo descarga ~13-16GB a {{ .Values.modelCache.hostPath }} (puede tardar).
+Estado: kubectl -n {{ .Values.namespace.name }} get pods -l app.kubernetes.io/part-of=local-llm -o wide

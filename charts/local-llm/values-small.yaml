@@ -1,0 +1,32 @@
+# 2 modelos PEQUEÑOS para las EC2 GPU (g5g=T4G 16GB / g6=L4 24GB), agenticos.
+# Se prueban PRIMERO en local (heredan nodeSelector wrx80-node1 de values.yaml).
+# Para desplegar en el pool GPU AWS, override nodeSelector al label del pool
+# (p.ej. underpass.ai/node-pool: aws-gpu) cuando exista.
+#
+# Instalar como release aparte (no choca con los 4 grandes):
+#   helm upgrade --install llm-small charts/local-llm -n underpass-labs \
+#     -f charts/local-llm/values.yaml -f charts/local-llm/values-small.yaml
+
+defaults:
+  gpuMemoryUtilization: 0.85
+  maxModelLen: 16384
+  quantization: ""
+  extraArgs: []
+  resources:
+    limits:
+      nvidia.com/gpu: "1"
+    requests:
+      cpu: "2"
+      memory: 6Gi
+  service:
+    type: ClusterIP
+    port: 8000
+
+# Reemplaza la lista de modelos (Helm sustituye listas, no las mezcla).
+models:
+  - name: phi4-mini
+    repo: microsoft/Phi-4-mini-instruct
+    servedName: phi-4-mini
+  - name: smollm3
+    repo: HuggingFaceTB/SmolLM3-3B
+    servedName: smollm3-3b

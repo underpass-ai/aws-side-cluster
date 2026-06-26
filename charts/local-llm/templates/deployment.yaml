@@ -1,0 +1,112 @@
+{{- $root := . -}}
+{{- range $m := .Values.models }}
+{{- $gmu := $m.gpuMemoryUtilization | default $root.Values.defaults.gpuMemoryUtilization -}}
+{{- $mml := $m.maxModelLen | default $root.Values.defaults.maxModelLen -}}
+{{- $quant := $m.quantization | default $root.Values.defaults.quantization -}}
+{{- $extra := $m.extraArgs | default $root.Values.defaults.extraArgs -}}
+{{- $res := $m.resources | default $root.Values.defaults.resources }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-{{ $m.name }}
+  namespace: {{ $root.Values.namespace.name }}
+  labels:
+    app.kubernetes.io/name: vllm-{{ $m.name }}
+    app.kubernetes.io/part-of: local-llm
+    underpass.ai/llm: {{ $m.name | quote }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate   # 1 GPU por modelo: no dos pods a la vez (evita contencion en rollout)
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vllm-{{ $m.name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vllm-{{ $m.name }}
+        app.kubernetes.io/part-of: local-llm
+        underpass.ai/llm: {{ $m.name | quote }}
+    spec:
+      {{- with ($m.nodeSelector | default $root.Values.nodeSelector) }}
+      nodeSelector:        # seleccion por label/tag del pool GPU (no por hostname)
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $root.Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: vllm
+          image: "{{ $root.Values.image.repository }}:{{ $root.Values.image.tag }}"
+          imagePullPolicy: {{ $root.Values.image.pullPolicy }}
+          args:
+            - --model
+            - {{ $m.repo | quote }}
+            - --served-model-name
+            - {{ $m.servedName | default $m.name | quote }}
+            - --tensor-parallel-size
+            - "1"
+            - --gpu-memory-utilization
+            - {{ $gmu | quote }}
+            - --max-model-len
+            - {{ $mml | quote }}
+            - --host
+            - "0.0.0.0"
+            - --port
+            - "8000"
+            {{- if $quant }}
+            - --quantization
+            - {{ $quant | quote }}
+            {{- end }}
+            {{- range $extra }}
+            - {{ . | quote }}
+            {{- end }}
+          env:
+            - name: HF_HOME
+              value: /models
+            {{- if $root.Values.hfTokenSecret.name }}
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $root.Values.hfTokenSecret.name }}
+                  key: {{ $root.Values.hfTokenSecret.key }}
+                  optional: true
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8000
+          resources:
+            {{- toYaml $res | nindent 12 }}
+          volumeMounts:
+            - name: model-cache
+              mountPath: /models
+            - name: dshm
+              mountPath: /dev/shm
+          startupProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+            failureThreshold: 180   # hasta ~30 min: descarga + carga del modelo
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            periodSeconds: 30
+            failureThreshold: 5
+      volumes:
+        - name: model-cache
+          {{- if $root.Values.modelCache.hostPath }}
+          hostPath:
+            path: {{ $root.Values.modelCache.hostPath | quote }}
+            type: DirectoryOrCreate
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: {{ $root.Values.shmSize | default "8Gi" | quote }}
+{{- end }}

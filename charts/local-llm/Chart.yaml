@@ -1,0 +1,6 @@
+apiVersion: v2
+name: local-llm
+description: Sirve N modelos vLLM en las GPUs locales (1 GPU por modelo) del control-plane.
+type: application
+version: 0.1.0
+appVersion: "vllm"
