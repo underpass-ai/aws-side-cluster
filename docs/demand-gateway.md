@@ -128,6 +128,8 @@ Para levantar desde frio, el proceso necesita:
 
 - AWS CLI con permisos para arrancar/parar/describir las EC2 tageadas.
 - `kubectl` admin o permisos para leer nodes/endpointslices.
+- `DEMAND_GATEWAY_SYNC_COMMAND=scripts/wg-sync-ec2-endpoints.sh` en el unit: fija el endpoint WireGuard PC->EC2 (IP publica dinamica) en cada wake.
+- `sudoers.d/aws-side-wg` (NOPASSWD `wg`): para que el gateway rootless (systemd `--user`) pueda hacer `sudo wg set`. Sin esto el sync falla y el nodo no rejoinea (regresion del paso a rootless, ya resuelta).
 
 Las EC2 inician el tunel WireGuard hacia un endpoint local estable:
 

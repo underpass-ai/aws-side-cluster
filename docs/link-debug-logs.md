@@ -1,5 +1,12 @@
 # Link Debug Logs
 
+> **Historico / RESUELTO (2026-06-26).** Este log documenta una prueba donde el
+> tunel no se establecia (`0 packets` UDP/51820). La causa real no era la red:
+> el modelo correcto es **PC->EC2** (la workstation inicia y fija el endpoint del
+> EC2 via `wg-sync`), que funciona detras de NAT/CGNAT sin port-forward. El
+> endpoint `aws-vpc-wg` se movio ademas a una zona Route53 **privada**. Diseno
+> actual en `docs/network-topology.md`. Se conserva como referencia.
+
 Fecha de la prueba: 2026-06-25
 
 ## Resumen

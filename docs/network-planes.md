@@ -11,7 +11,7 @@ La POC usa dos planos distintos:
 
 `aws-demand.underpassai.com` es la entrada HTTP interna del laboratorio. Resuelve a una IP RFC1918 anunciada por MetalLB para `ingress-nginx` y sirve el gateway de demanda con TLS.
 
-`aws-vpc-wg.underpassai.com` es un endpoint de red, no una web. Las EC2 lo usan para iniciar WireGuard hacia el cluster local.
+`aws-vpc-wg.underpassai.com` es un endpoint de red, no una web. Las EC2 lo usan para iniciar WireGuard hacia el cluster local. Vive en una zona Route53 **privada** (VPC-scoped, `terraform/dns.tf`); **no** esta en la zona publica, asi que no toca la web. Detalle en `docs/network-topology.md`.
 
 ## Regla Operativa
 

@@ -4,12 +4,10 @@ POC para extender un cluster Kubernetes local con workers baratos en AWS EC2. El
 
 ## Estado Validado
 
-Fecha de validacion: 2026-06-25.
+Fecha de validacion: 2026-06-25 (fase 1). 2026-06-26: wake rootless, join orquestado en Terraform, reachability MetalLB, worker<->worker y DNS privado validados con `scripts/cluster-test.sh`.
 
 - Control-plane local: `wrx80-node1`, `192.168.1.56`
-- Workers AWS actuales:
-  - `ip-10-80-1-235.eu-south-2.compute.internal`, `10.90.0.11`, EC2 `i-0a1837c040f752941`
-  - `ip-10-80-1-72.eu-south-2.compute.internal`, `10.90.0.12`, EC2 `i-06a51d135c4559506`
+- Workers AWS: `aws-worker-1` (WG `10.90.0.11`) y `aws-worker-2` (WG `10.90.0.12`). Nombre de nodo estable; el ID de instancia EC2 cambia en cada replace.
 - WireGuard local: `aws-workers`, local `10.90.0.1`
 - VPC: `vpc-0ece93c68a3d23f84`, CIDR `10.80.0.0/16`
 - Public subnet: `subnet-06e142a3f3d96f502`, CIDR `10.80.1.0/24`
@@ -56,8 +54,15 @@ El plano de control no se mueve a AWS. AWS aporta capacidad elastica de workers.
 - `scripts/ec2-pool.sh`: `status`, `start`, `stop`, `scale` por tags.
 - `scripts/demand-gateway.py`: primer gateway HTTP de wake/proxy para scale-on-demand.
 - `scripts/generate-worker-secrets.sh`: claves WireGuard y tfvars secretos.
-- `scripts/wg-sync-ec2-endpoints.sh`: fallback manual para depuracion de endpoints WireGuard.
-- `scripts/create-kubeadm-join-command.sh`: crea el `kubeadm join`.
+- `scripts/wg-sync-ec2-endpoints.sh`: fija el endpoint WireGuard PC->EC2 (IP publica dinamica). Lo invoca Terraform en cada apply y el gateway en cada wake.
+- `scripts/wg-sync-and-wait.sh`: sincroniza y espera a que los nodos lleguen a Ready (usado por `null_resource.wg_sync`).
+- `scripts/setup-pc-network.sh` + `systemd/aws-side-pc-net.service`: reglas forward/NAT del PC (WireGuard <-> LAN/MetalLB + hairpin worker<->worker), persistentes en boot.
+- `scripts/create-kubeadm-join-command.sh`: helper opcional de token (el flujo normal lo genera Terraform).
+- `scripts/cluster-test.sh`: smoke test integral (cold-start + cadena completa).
+- `terraform/join.tf`: token bootstrap + join + wg-sync orquestados. Ver `docs/terraform-join.md`.
+- `terraform/dns.tf`: zona Route53 privada para el endpoint WireGuard EC2->PC.
+- `docs/network-topology.md`: topologia de red completa (estrella, AllowedIPs, NAT, DNS).
+- `docs/terraform-join.md`: join orquestado en Terraform.
 - `docs/calico-recovery.md`: rollback/preflight del cambio de Calico.
 - `docs/demand-gateway.md`: uso y limitaciones del gateway de demanda.
 - `docs/per-node-demand-test.md`: prueba de routing por tag/nodo.
@@ -414,7 +419,13 @@ Encendidos, pagan EC2 + IPv4 publica dinamica por horas. La IPv4 publica se libe
 - UFW bloqueaba `6443`: se abrio solo desde `aws-workers` y `10.90.0.0/24`.
 - Calico Typha bloqueado por UFW: se abrio `5473` solo desde `aws-workers` y `10.90.0.0/24`.
 - API server no podia hablar con kubelet por origen `10.90.0.1`: se anadio `10.90.0.1/32` a `AllowedIPs`.
-- Reemplazos sucesivos dejaron nodos antiguos `NotReady`: se limpiaron con `kubectl delete node`.
+- Reemplazos sucesivos dejaron nodos antiguos `NotReady`: se limpiaron con `kubectl delete node`. Resuelto de raiz con `--node-name=aws-worker-N` estable (cloud-init).
+- Gateway rootless (systemd `--user`) no podia hacer `sudo wg set`: `sudoers.d/aws-side-wg` (NOPASSWD `wg`) + `DEMAND_GATEWAY_SYNC_COMMAND` en el unit.
+- `demand-gateway.py` reventaba con EndpointSlice `endpoints=null` (workers parados): endurecido con `or []`.
+- EC2 no veian las IPs MetalLB: `192.168.1.240/28` en AllowedIPs + forward/MASQUERADE en el PC (`setup-pc-network.sh`).
+- Sin trafico worker<->worker (malla en estrella): `10.90.0.0/24` en AllowedIPs + hairpin forward en el PC.
+- Token kubeadm manual y caducaba a 24h: ahora lo genera Terraform (provider `kubernetes`). Ver `docs/terraform-join.md`.
+- Endpoint `aws-vpc-wg` creado por error en la zona publica (casi rompe la web): movido a zona Route53 PRIVADA (`terraform/dns.tf`).
 
 ## Siguiente Fase
 
