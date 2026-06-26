@@ -7,8 +7,11 @@ namespace:
   name: underpass-labs
 
 image:
-  repository: vllm/vllm-openai
-  tag: "v0.20.0"         # >= 0.19 para Qwen3.6 / GLM-4.7 / gemma-4
+  # Nombre TOTALMENTE CUALIFICADO: el nodo es CRI-O con short-name enforcing.
+  repository: docker.io/vllm/vllm-openai
+  # vLLM >= v0.20.0 usa CUDA 13.0 por defecto (host: driver 595 / CUDA 13.2).
+  # 'latest' = CUDA 13 + soporte de modelos 2026. Pinear (p.ej. v0.23.0) para reproducibilidad.
+  tag: "latest"
   pullPolicy: IfNotPresent
 
 # Seleccion estilo MIG: en vez de elegir un perfil MIG, se elige el TIPO de GPU
