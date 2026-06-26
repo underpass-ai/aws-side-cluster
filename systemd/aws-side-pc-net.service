@@ -1,0 +1,13 @@
+[Unit]
+Description=aws-side-cluster PC network rules (WireGuard <-> LAN/MetalLB forward + NAT)
+After=network-online.target wg-quick@aws-workers.service ufw.service
+Wants=network-online.target
+# Re-aplicar si ufw recarga (ufw flushea FORWARD). Si no, basta el boot.
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/home/USER/ai/developents/aws-side-cluster/scripts/setup-pc-network.sh
+
+[Install]
+WantedBy=multi-user.target
