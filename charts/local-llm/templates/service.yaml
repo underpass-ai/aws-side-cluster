@@ -1,6 +1,7 @@
 {{- $root := . -}}
 {{- range $m := .Values.models }}
-{{- $svc := merge (dict) ($m.service | default dict) $root.Values.defaults.service }}
+{{- $svc := merge (dict) ($m.service | default dict) $root.Values.defaults.service -}}
+{{- $role := $m.role | default "general" }}
 ---
 apiVersion: v1
 kind: Service
@@ -10,6 +11,7 @@ metadata:
   labels:
     app.kubernetes.io/name: vllm-{{ $m.name }}
     app.kubernetes.io/part-of: local-llm
+    underpass.ai/llm-role: {{ $role | quote }}
 spec:
   type: {{ $svc.type | default "ClusterIP" }}
   {{- if and (eq ($svc.type | default "ClusterIP") "LoadBalancer") (hasKey $svc "loadBalancerIP") }}

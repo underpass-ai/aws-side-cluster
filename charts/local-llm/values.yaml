@@ -74,6 +74,7 @@ models:
   - name: qwen3-coder
     repo: QuantTrio/Qwen3-Coder-30B-A3B-Instruct-AWQ
     servedName: qwen3-coder-30b
+    role: coding
     # 65536 no cabe en KV con 24GB (máx ~45840); 40K + util 0.95 deja margen.
     maxModelLen: 40960
     gpuMemoryUtilization: 0.95
@@ -86,6 +87,7 @@ models:
   - name: ernie45-thinking
     repo: cyankiwi/ERNIE-4.5-21B-A3B-Thinking-AWQ-4bit
     servedName: ernie-4.5-21b-a3b
+    role: reasoning
     maxModelLen: 32768
     gpuMemoryUtilization: 0.92
     # El repo AWQ no trae tokenization_ernie4_5.py (código custom del tokenizer);
@@ -95,6 +97,7 @@ models:
   - name: devstral
     repo: cyankiwi/Devstral-Small-2-24B-Instruct-2512-AWQ-4bit
     servedName: devstral-small-24b
+    role: coding
     # Devstral-2-2512 trae torre de visión; para código lo servimos text-only
     # (--limit-mm-per-prompt image=0 evita el profiling Pixtral que crashea al arrancar).
     extraArgs: [--enable-auto-tool-choice, --tool-call-parser, mistral, --limit-mm-per-prompt, '{"image":0}']
@@ -102,4 +105,5 @@ models:
   - name: gemma4
     repo: cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit
     servedName: gemma-4-26b
+    role: general
     extraArgs: []   # gemma no tiene tool-parser dedicado en vLLM aun; servir plano

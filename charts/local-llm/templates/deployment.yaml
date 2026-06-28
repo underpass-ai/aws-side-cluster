@@ -4,7 +4,8 @@
 {{- $mml := $m.maxModelLen | default $root.Values.defaults.maxModelLen -}}
 {{- $quant := $m.quantization | default $root.Values.defaults.quantization -}}
 {{- $extra := $m.extraArgs | default $root.Values.defaults.extraArgs -}}
-{{- $res := $m.resources | default $root.Values.defaults.resources }}
+{{- $res := $m.resources | default $root.Values.defaults.resources -}}
+{{- $role := $m.role | default "general" }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -15,6 +16,7 @@ metadata:
     app.kubernetes.io/name: vllm-{{ $m.name }}
     app.kubernetes.io/part-of: local-llm
     underpass.ai/llm: {{ $m.name | quote }}
+    underpass.ai/llm-role: {{ $role | quote }}   # rol para selección/orquestación (choreographer)
 spec:
   replicas: 1
   strategy:
@@ -28,6 +30,7 @@ spec:
         app.kubernetes.io/name: vllm-{{ $m.name }}
         app.kubernetes.io/part-of: local-llm
         underpass.ai/llm: {{ $m.name | quote }}
+        underpass.ai/llm-role: {{ $role | quote }}
     spec:
       {{- with ($m.nodeSelector | default $root.Values.nodeSelector) }}
       nodeSelector:        # seleccion por label/tag del pool GPU (no por hostname)
