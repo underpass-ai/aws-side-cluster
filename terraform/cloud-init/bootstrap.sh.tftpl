@@ -38,6 +38,15 @@ KUBELET_NODE_IP='${kubelet_node_ip}'
 NODE_LABEL_ARGS='${node_label_args}'
 NODE_TAINT_ARGS='${node_taint_args}'
 
+# Vars GPU en el scope del script PRINCIPAL (install_gpu_driver/download_gpu_models
+# las usan en el flujo main; antes solo estaban en el heredoc de kubeadm-join.sh,
+# lo que las dejaba unbound bajo `set -u` y mataba el bootstrap antes del join).
+GPU_WORKER_ENABLED='${gpu_worker_enabled}'
+GPU_INSTALL_DRIVER='${gpu_install_driver}'
+LLM_MODELS_BUCKET='${llm_models_bucket}'
+LLM_MODELS_PREFIX='${llm_models_prefix}'
+LLM_MODELS_PATH='${llm_models_path}'
+
 HOME_DIR="$(getent passwd "$HOME_USER" | cut -d: -f6)"
 if [[ -z "$HOME_DIR" ]]; then
   echo "User $HOME_USER does not exist" >&2
@@ -287,12 +296,6 @@ KUBEADM_JOIN_COMMAND='${kubeadm_join_command}'
 NODE_LABEL_ARGS='${node_label_args}'
 NODE_TAINT_ARGS='${node_taint_args}'
 NODE_NAME='${node_name}'
-
-GPU_WORKER_ENABLED='${gpu_worker_enabled}'
-GPU_INSTALL_DRIVER='${gpu_install_driver}'
-LLM_MODELS_BUCKET='${llm_models_bucket}'
-LLM_MODELS_PREFIX='${llm_models_prefix}'
-LLM_MODELS_PATH='${llm_models_path}'
 
 if [[ -f /etc/kubernetes/kubelet.conf ]]; then
   echo "Node already joined"
