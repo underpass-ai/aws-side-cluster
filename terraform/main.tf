@@ -44,8 +44,9 @@ locals {
   base_node_label_args = join(",", [for key, value in var.kubernetes_node_labels : "${key}=${value}"])
   node_taint_args      = join(",", var.kubernetes_node_taints)
   llm_models_path      = "/opt/llm-models/hub"
-  # Labels del pool GPU: base + node-pool=aws-gpu (el GPU Operator/GFD anade las nvidia.com/gpu.* solo)
-  gpu_node_label_args = join(",", compact([local.base_node_label_args, "underpass.ai/node-pool=aws-gpu"]))
+  # Labels del pool GPU: como base pero node-pool=aws-gpu (replace evita key duplicada).
+  # El GPU Operator/GFD anade las nvidia.com/gpu.* solo al detectar la GPU.
+  gpu_node_label_args = replace(local.base_node_label_args, "underpass.ai/node-pool=aws-poc", "underpass.ai/node-pool=aws-gpu")
 }
 
 data "aws_iam_policy_document" "ec2_assume_role" {

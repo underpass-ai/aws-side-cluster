@@ -70,7 +70,7 @@ resource "null_resource" "wg_sync" {
   count = var.worker_wireguard_enabled ? 1 : 0
 
   triggers = {
-    instances = join(",", aws_instance.worker[*].id)
+    instances = join(",", concat(aws_instance.worker[*].id, aws_instance.gpu_worker[*].id))
   }
 
   provisioner "local-exec" {
@@ -80,11 +80,11 @@ resource "null_resource" "wg_sync" {
       AWS_REGION    = var.aws_region
       WG_INTERFACE  = "aws-workers"
       EXPECT_READY  = tostring(var.instance_count + var.gpu_instance_count)
-      WAIT_SECONDS  = "600"
+      WAIT_SECONDS  = "1200"
       NODE_SELECTOR = "underpass.ai/node-pool=aws-poc"
     }
     command = "scripts/wg-sync-and-wait.sh"
   }
 
-  depends_on = [aws_instance.worker]
+  depends_on = [aws_instance.worker, aws_instance.gpu_worker]
 }
