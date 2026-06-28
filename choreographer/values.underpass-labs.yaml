@@ -1,0 +1,71 @@
+# Perfil de despliegue del Choreographer (chart upstream: underpass-orchestrator/charts/choreographer)
+# en el namespace del POC: underpass-labs. Sin runtime plane, sin mTLS/OTLP, NATS embebido,
+# providers = los 4 vLLM locales (la ceremonia auto-prepara los agentes vllm desde su YAML).
+#
+# Despliegue (desde el repo del orquestador, con este values):
+#   NAMESPACE=underpass-labs RELEASE_NAME=choreographer \
+#   VALUES_FILE=<ruta a este fichero> IMAGE_TAG=sha-COMMIT \
+#   ./scripts/ci/deploy-kubernetes.sh
+# (la imagen debe llevar la feature `agent-vllm`).
+
+image:
+  pullPolicy: Always
+imagePullSecrets:
+  - name: ghcr-pull
+
+# Cada plano Underpass tiene su propio bus; NATS embebido mantiene el deploy autocontenido.
+messaging:
+  nats:
+    enabled: true
+    url: ""
+    publishPrefix: choreo
+    triggerSubject: choreo.trigger.>
+    embedded:
+      enabled: true
+      jetstream:
+        enabled: false
+
+# POC: NO hay runtime plane en underpass-labs. El ganador no se ejecuta; la ceremonia solo
+# delibera y devuelve el acta. Executor no-op (determinista).
+executor:
+  kind: noop
+
+config:
+  # No hace falta seed: la ceremonia auto-prepara sus agentes vllm desde el YAML (el seeding
+  # solo crearía NoopAgents). Dejar vacío.
+  seedSpecialties: ""
+  logLevel: info
+
+# Provider vLLM BASE (obligatorio para activar el arm `agent-vllm`). Los `provider.*` por-agente
+# del YAML de la ceremonia sobreescriben endpoint/model por step, así que esto es solo el default.
+# Endpoints = Services del chart local-llm en el mismo namespace.
+providerEnv:
+  - name: CHOREO_VLLM_ENDPOINT
+    value: "http://vllm-gemma4:8000"
+  - name: CHOREO_VLLM_MODEL
+    value: "gemma-4-26b"
+  - name: CHOREO_VLLM_MAX_TOKENS
+    value: "1024"
+  - name: CHOREO_VLLM_TIMEOUT_SECS
+    value: "300"
+  # LLM-as-judge: el winner de cada step se elige por calidad intrínseca (no por tie-break
+  # arbitrario). Clave para que la decision trace del artículo tenga sentido. Reusa el vLLM base.
+  - name: CHOREO_JUDGE_ENABLED
+    value: "true"
+  - name: CHOREO_JUDGE_THRESHOLD
+    value: "0.5"
+
+# Persistencia en memoria (POC). Encender con un Postgres CR in-namespace si se quiere durar.
+persistence:
+  postgres:
+    enabled: false
+
+# HTTP/2 plano dentro del cluster (sin mTLS; no hay runtime plane aquí).
+tls:
+  mode: none
+
+replicaCount: 1
+
+# Permite tags sha-SHORT de CI (inmutables por commit).
+development:
+  allowMutableImageTags: true

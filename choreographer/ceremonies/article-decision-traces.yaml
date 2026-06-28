@@ -1,0 +1,173 @@
+# Ceremonia editorial: planifica el artículo sobre las "decision traces" del Choreographer.
+# Auto-referencial: la corrida de ESTA ceremonia produce una decision trace que puede ir
+# DENTRO del propio artículo (council propose->critique->revise->score->winner + judge + OTEL).
+#
+# Councils respaldados por los 4 vLLM locales del POC (namespace underpass-labs). Cada step usa
+# una specialty DISTINTA => un council distinto => un modelo distinto (auto-prepare crea
+# agent-{specialty}-{i}). Para mezclar 2 modelos en un mismo council (council heterogéneo) ver
+# README (RegisterAgent + CreateCouncil). Validado contra el esquema CeremonyDefinition (11 invariantes).
+#
+# Requisitos de despliegue (ver README):
+#  - choreographer en underpass-labs con feature agent-vllm + env base CHOREO_VLLM_ENDPOINT/_MODEL.
+#  - Servicios vLLM resolubles: vllm-gemma4 / vllm-qwen3-coder / vllm-ernie45-thinking / vllm-devstral (:8000).
+#  - (opcional pero recomendado para el artículo) CHOREO_JUDGE_ENABLED=true => el winner se elige por
+#    calidad intrínseca (LLM-judge), no por tie-break arbitrario.
+
+version: "1.0"
+name: "article_decision_traces_planning"
+description: "Editorial planning ceremony that designs the article about the Choreographer's decision traces. Four roles, four local models (Gemma/Qwen/ERNIE/Devstral) in underpass-labs."
+
+inputs:
+  required:
+    - article_brief
+  optional:
+    - audience_notes
+outputs:
+  article_outline:
+    type: object
+
+states:
+  - id: FRAMING
+    initial: true
+  - id: DRAFTING
+  - id: CRITIQUE
+  - id: SYNTHESIS
+  - id: SEALED
+    terminal: true
+
+transitions:
+  - from: FRAMING
+    to: DRAFTING
+    trigger: brief_framed
+    guards: [frame_done]
+  - from: DRAFTING
+    to: CRITIQUE
+    trigger: angles_drafted
+    guards: [draft_done]
+  - from: CRITIQUE
+    to: SYNTHESIS
+    trigger: gaps_reviewed
+    guards: [critique_done]
+  - from: SYNTHESIS
+    to: SEALED
+    trigger: outline_sealed
+    guards: [synthesis_done]
+
+steps:
+  # FACILITATOR -> Gemma (general): encuadra tesis, público y los 3 takeaways. Sin deliberación.
+  - id: frame_scope
+    state: FRAMING
+    handler: facilitation_prompt
+    config:
+      specialty: editorial_general
+      agent_kind: vllm
+      num_agents: 1
+      rounds: 0
+      provider.endpoint: "http://vllm-gemma4:8000"
+      provider.model: "gemma-4-26b"
+      provider.max_tokens: 1024
+      provider.timeout_secs: 120
+      prompt: >-
+        You are the editorial facilitator. Reframe the brief for an article about the
+        Choreographer's "decision traces". State the thesis in one sentence, the target
+        reader, and the three things the reader must remember. Do not write the article;
+        set the scope and hand off to the contributors.
+
+  # CONTRIBUTORS -> Qwen3-Coder (coding), council de 2 + 1 ronda de crítica:
+  # produce la traza estrella (propose -> peer critique -> revise -> score -> winner).
+  - id: draft_angles
+    state: DRAFTING
+    handler: persona_prompt
+    config:
+      specialty: editorial_coding
+      agent_kind: vllm
+      num_agents: 2
+      rounds: 1
+      provider.endpoint: "http://vllm-qwen3-coder:8000"
+      provider.model: "qwen3-coder-30b"
+      provider.max_tokens: 1536
+      provider.timeout_secs: 240
+      prompt: >-
+        You are a technical contributor. Propose an article outline (4-6 sections, one
+        sentence each) that shows how the Choreographer yields auditable decision traces:
+        councils (propose -> critique -> revise -> score -> pick winner), the LLM-as-judge
+        scorer, and the OpenTelemetry span-by-span replay. Be concrete; in the critique
+        round, push back hard on weak or vague sections.
+
+  # REVIEWER -> ERNIE (reasoning, thinking): caza huecos y afirmaciones débiles. Un solo pase.
+  - id: critique_gaps
+    state: CRITIQUE
+    handler: challenge_prompt
+    config:
+      specialty: editorial_reasoning
+      agent_kind: vllm
+      num_agents: 1
+      rounds: 0
+      provider.endpoint: "http://vllm-ernie45-thinking:8000"
+      provider.model: "ernie-4.5-21b-a3b"
+      provider.max_tokens: 2048
+      provider.timeout_secs: 300
+      prompt: >-
+        You are the critical reviewer. Challenge the proposed outline: which claim is weak
+        or not verifiable, what is missing for a technical reader (e.g. how to reproduce a
+        trace by trace ID), and which section is redundant. Name the concrete gaps; do not
+        rewrite the outline.
+
+  # EDITOR -> Devstral (coding/writer): integra outline + crítica en el outline FINAL (el acta).
+  - id: synthesize_outline
+    state: SYNTHESIS
+    handler: synthesis_prompt
+    config:
+      specialty: editorial_editor
+      agent_kind: vllm
+      num_agents: 1
+      rounds: 0
+      provider.endpoint: "http://vllm-devstral:8000"
+      provider.model: "devstral-small-24b"
+      provider.max_tokens: 1536
+      provider.timeout_secs: 240
+      prompt: >-
+        You are the editor. Integrate the drafted outline and the reviewer's critique into
+        the FINAL article outline: the definitive section list, the winning angle, and the
+        next concrete action (which section gets written first, and who owns it). This
+        output is the acta (meeting record).
+
+guards:
+  frame_done:
+    type: automated
+    check: "step_status:frame_scope:COMPLETED"
+  draft_done:
+    type: automated
+    check: "step_status:draft_angles:COMPLETED"
+  critique_done:
+    type: automated
+    check: "step_status:critique_gaps:COMPLETED"
+  synthesis_done:
+    type: automated
+    check: "step_status:synthesize_outline:COMPLETED"
+
+roles:
+  - id: FACILITATOR
+    allowed_actions:
+      - frame_scope
+      - brief_framed
+  - id: CONTRIBUTOR
+    allowed_actions:
+      - draft_angles
+      - angles_drafted
+  - id: REVIEWER
+    allowed_actions:
+      - critique_gaps
+      - gaps_reviewed
+  - id: EDITOR
+    allowed_actions:
+      - synthesize_outline
+      - outline_sealed
+
+timeouts:
+  step_default: 300
+
+retry_policies:
+  default:
+    max_attempts: 2
+    backoff_seconds: 2
