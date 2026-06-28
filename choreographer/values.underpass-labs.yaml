@@ -8,10 +8,16 @@
 #   ./scripts/ci/deploy-kubernetes.sh
 # (la imagen debe llevar la feature `agent-vllm`).
 
+# POC: imagen local ya presente en cri-o (ghcr.io/underpass-ai/underpass-choreographer:<tag>);
+# el tag se pasa en el deploy (--set image.tag=...). pullPolicy IfNotPresent usa la local sin ghcr-pull.
 image:
-  pullPolicy: Always
-imagePullSecrets:
-  - name: ghcr-pull
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# La imagen es x86_64 y los workers AWS son arm64 (t4g): fijar al nodo local amd64 (donde además
+# están los Services vLLM y las GPUs).
+nodeSelector:
+  kubernetes.io/arch: amd64
 
 # Cada plano Underpass tiene su propio bus; NATS embebido mantiene el deploy autocontenido.
 messaging:
@@ -54,6 +60,10 @@ providerEnv:
     value: "true"
   - name: CHOREO_JUDGE_THRESHOLD
     value: "0.5"
+  # Export OTLP de las trazas de deliberación al collector release-local (abajo). Plain (http://),
+  # sin mTLS. Cada propuesta/crítica/veredicto/score del judge se vuelve un span.
+  - name: CHOREO_OTLP_ENDPOINT
+    value: "http://choreographer-otel-collector:4317"
 
 # Persistencia en memoria (POC). Encender con un Postgres CR in-namespace si se quiere durar.
 persistence:
@@ -69,3 +79,12 @@ replicaCount: 1
 # Permite tags sha-SHORT de CI (inmutables por commit).
 development:
   allowMutableImageTags: true
+
+# Collector OTEL release-local EN underpass-labs (traído por este mismo helm del choreographer).
+# Recibe las trazas del choreographer (CHOREO_OTLP_ENDPOINT arriba), las loguea (debug =>
+# capturables para el artículo) y las reenvía al Tempo del cluster (ns monitoring) para Grafana.
+otelCollector:
+  enabled: true
+  tempo:
+    endpoint: "tempo.monitoring.svc.cluster.local:4317"
+    insecure: true

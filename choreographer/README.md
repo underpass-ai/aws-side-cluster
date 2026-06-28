@@ -43,9 +43,9 @@ Flujo `FRAMING → DRAFTING → CRITIQUE → SYNTHESIS → SEALED`, un step por 
 
 ```bash
 # port-forward al gRPC del choreographer (ajusta puerto/servicio segun el chart)
-kubectl -n underpass-labs port-forward svc/choreographer 50051:50051 &
+kubectl -n underpass-labs port-forward svc/choreographer 50055:50055 &
 
-grpcurl -plaintext -d @ localhost:50051 underpass.choreo.v1.ChoreographyService/RunCeremony <<JSON
+grpcurl -plaintext -d @ localhost:50055 underpass.choreo.v1.ChoreographerService/RunCeremony <<JSON
 {
   "ceremony_id": "article-trace-1",
   "definition_yaml": $(yq -o=json -I=0 '.' ceremonies/article-decision-traces.yaml | jq -Rs .),
