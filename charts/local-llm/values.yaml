@@ -74,19 +74,30 @@ models:
   - name: qwen3-coder
     repo: QuantTrio/Qwen3-Coder-30B-A3B-Instruct-AWQ
     servedName: qwen3-coder-30b
-    maxModelLen: 65536
+    # 65536 no cabe en KV con 24GB (máx ~45840); 40K + util 0.95 deja margen.
+    maxModelLen: 40960
+    gpuMemoryUtilization: 0.95
     extraArgs: [--enable-auto-tool-choice, --tool-call-parser, qwen3_coder]
     # service: { type: LoadBalancer, loadBalancerIP: 192.168.1.246 }
 
-  - name: glm47-flash
-    repo: cyankiwi/GLM-4.7-Flash-AWQ-4bit
-    servedName: glm-4.7-flash
-    extraArgs: [--enable-auto-tool-choice, --tool-call-parser, glm45, --reasoning-parser, glm45]
+  # GLM-4.7-Flash AWQ descartado: usa MLA y vLLM 0.23 peta en _compute_prefill_context
+  # (kv_b_proj cuantizado sin .weight) con prompts largos/tools. Reemplazado por ERNIE
+  # (Baidu, MoE A3B + GQA no-MLA, KV holgada — análogo al qwen3-coder que funciona).
+  - name: ernie45-thinking
+    repo: cyankiwi/ERNIE-4.5-21B-A3B-Thinking-AWQ-4bit
+    servedName: ernie-4.5-21b-a3b
+    maxModelLen: 32768
+    gpuMemoryUtilization: 0.92
+    # El repo AWQ no trae tokenization_ernie4_5.py (código custom del tokenizer);
+    # cargamos el tokenizer del repo base oficial (pesos siguen del AWQ).
+    extraArgs: [--trust-remote-code, --tokenizer, baidu/ERNIE-4.5-21B-A3B-Thinking, --enable-auto-tool-choice, --tool-call-parser, ernie45, --reasoning-parser, ernie45]
 
   - name: devstral
     repo: cyankiwi/Devstral-Small-2-24B-Instruct-2512-AWQ-4bit
     servedName: devstral-small-24b
-    extraArgs: [--enable-auto-tool-choice, --tool-call-parser, mistral]
+    # Devstral-2-2512 trae torre de visión; para código lo servimos text-only
+    # (--limit-mm-per-prompt image=0 evita el profiling Pixtral que crashea al arrancar).
+    extraArgs: [--enable-auto-tool-choice, --tool-call-parser, mistral, --limit-mm-per-prompt, '{"image":0}']
 
   - name: gemma4
     repo: cyankiwi/gemma-4-26B-A4B-it-AWQ-4bit
