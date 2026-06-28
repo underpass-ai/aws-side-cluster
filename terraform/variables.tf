@@ -312,3 +312,58 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+# --- Pool de workers GPU (g5g.xlarge, T4G). Separado del pool t4g.micro. ---
+
+variable "gpu_instance_count" {
+  description = "Numero de workers GPU (g5g). 0 = no se crea ningun recurso GPU (pool t4g intacto)."
+  type        = number
+  default     = 0
+
+  validation {
+    condition     = var.gpu_instance_count >= 0
+    error_message = "gpu_instance_count must be zero or greater."
+  }
+}
+
+variable "gpu_instance_type" {
+  description = "Tipo EC2 GPU. g5g.xlarge = T4G (16GB, ARM/Graviton2, mismo arm64). g6/g6e son x86_64."
+  type        = string
+  default     = "g5g.xlarge"
+}
+
+variable "gpu_install_driver" {
+  description = "Instalar el driver NVIDIA (host) en cloud-init del worker GPU. El GPU Operator pone toolkit+device-plugin."
+  type        = bool
+  default     = true
+}
+
+variable "gpu_root_volume_size_gb" {
+  description = "EBS root de los workers GPU. Mayor que el de t4g: driver + modelos (~13GB) + margen."
+  type        = number
+  default     = 60
+
+  validation {
+    condition     = var.gpu_root_volume_size_gb >= 30
+    error_message = "gpu_root_volume_size_gb must be at least 30."
+  }
+}
+
+variable "gpu_worker_wireguard_private_keys" {
+  description = "Claves privadas WireGuard de los workers GPU, una por instancia. En state para esta POC."
+  type        = list(string)
+  default     = []
+  sensitive   = true
+}
+
+variable "gpu_worker_wireguard_public_keys" {
+  description = "Claves publicas WireGuard de los workers GPU. Para config local/output."
+  type        = list(string)
+  default     = []
+}
+
+variable "gpu_llm_models_prefix" {
+  description = "Prefijo S3 (en el bucket bootstrap) con los .tar de modelos LLM que el worker GPU descarga."
+  type        = string
+  default     = "models"
+}

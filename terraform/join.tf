@@ -79,7 +79,7 @@ resource "null_resource" "wg_sync" {
     environment = {
       AWS_REGION    = var.aws_region
       WG_INTERFACE  = "aws-workers"
-      EXPECT_READY  = tostring(var.instance_count)
+      EXPECT_READY  = tostring(var.instance_count + var.gpu_instance_count)
       WAIT_SECONDS  = "600"
       NODE_SELECTOR = "underpass.ai/node-pool=aws-poc"
     }

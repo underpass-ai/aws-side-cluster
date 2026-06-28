@@ -288,6 +288,12 @@ NODE_LABEL_ARGS='${node_label_args}'
 NODE_TAINT_ARGS='${node_taint_args}'
 NODE_NAME='${node_name}'
 
+GPU_WORKER_ENABLED='${gpu_worker_enabled}'
+GPU_INSTALL_DRIVER='${gpu_install_driver}'
+LLM_MODELS_BUCKET='${llm_models_bucket}'
+LLM_MODELS_PREFIX='${llm_models_prefix}'
+LLM_MODELS_PATH='${llm_models_path}'
+
 if [[ -f /etc/kubernetes/kubelet.conf ]]; then
   echo "Node already joined"
   exit 0
@@ -354,10 +360,63 @@ configure_kubernetes_worker() {
   write_join_service
 }
 
+# GPU: instala SOLO el driver NVIDIA en el host (el GPU Operator del cluster pone
+# luego toolkit + device-plugin y configura containerd-nvidia al unirse el nodo).
+# En g5g (aarch64/T4G) hay que usar el repo UPSTREAM sbsa (el de AWS es x86_64),
+# DKMS, y REBOOT para cargar el modulo. El bootstrap re-corre tras el reboot (idempotente).
+install_gpu_driver() {
+  if [[ "$GPU_WORKER_ENABLED" != "true" || "$GPU_INSTALL_DRIVER" != "true" ]]; then
+    return 0
+  fi
+  if [[ -f "$BOOTSTRAP_DIR/.gpu-driver.done" ]]; then
+    echo "NVIDIA driver already installed"
+    return 0
+  fi
+  echo "Installing NVIDIA driver (DKMS, repo sbsa/aarch64) para CUDA 13"
+  dnf install -y "kernel-devel-$(uname -r)" "kernel-headers-$(uname -r)" gcc make dkms
+  curl -sL https://developer.download.nvidia.com/compute/cuda/repos/amzn2023/sbsa/cuda-amzn2023.repo \
+    -o /etc/yum.repos.d/cuda-amzn2023.repo
+  dnf clean all
+  dnf install -y nvidia-open || dnf install -y cuda-drivers
+  systemctl enable --now nvidia-persistenced 2>/dev/null || true
+  touch "$BOOTSTRAP_DIR/.gpu-driver.done"
+  echo "NVIDIA driver instalado; reboot para cargar el modulo (el bootstrap re-corre al arrancar)"
+  reboot
+  exit 0
+}
+
+# GPU: descarga los .tar de modelos desde S3 (GLACIER_IR, instant) a la cache HF.
+# Cada tar preserva la estructura models--org--name/ con symlinks.
+download_gpu_models() {
+  if [[ "$GPU_WORKER_ENABLED" != "true" || -z "$LLM_MODELS_BUCKET" ]]; then
+    return 0
+  fi
+  if [[ -f "$BOOTSTRAP_DIR/.gpu-models.done" ]]; then
+    echo "LLM models already present"
+    return 0
+  fi
+  echo "Descargando modelos de s3://$LLM_MODELS_BUCKET/$LLM_MODELS_PREFIX/ -> $LLM_MODELS_PATH"
+  mkdir -p "$LLM_MODELS_PATH"
+  local tars t
+  tars="$(aws s3 ls "s3://$LLM_MODELS_BUCKET/$LLM_MODELS_PREFIX/" | awk '$4 ~ /\.tar$/ {print $4}')"
+  if [[ -z "$tars" ]]; then
+    echo "Sin tars en s3://$LLM_MODELS_BUCKET/$LLM_MODELS_PREFIX/ (omito)"
+  else
+    while read -r t; do
+      [[ -z "$t" ]] && continue
+      echo "  retrieving $t"
+      aws s3 cp "s3://$LLM_MODELS_BUCKET/$LLM_MODELS_PREFIX/$t" - | tar -x -C "$LLM_MODELS_PATH"
+    done <<< "$tars"
+  fi
+  touch "$BOOTSTRAP_DIR/.gpu-models.done"
+}
+
 install_common_packages
 download_s3_once
 configure_wireguard
 configure_kubernetes_api_hosts
+install_gpu_driver
+download_gpu_models
 configure_kubernetes_worker
 
 echo "Bootstrap completed"
