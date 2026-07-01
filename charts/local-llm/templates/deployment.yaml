@@ -32,6 +32,9 @@ spec:
         underpass.ai/llm: {{ $m.name | quote }}
         underpass.ai/llm-role: {{ $role | quote }}
     spec:
+      {{- with $root.Values.runtimeClassName }}
+      runtimeClassName: {{ . }}   # "nvidia" en nodos containerd (g5g) que no inyectan GPU por defecto
+      {{- end }}
       {{- with ($m.nodeSelector | default $root.Values.nodeSelector) }}
       nodeSelector:        # seleccion por label/tag del pool GPU (no por hostname)
         {{- toYaml . | nindent 8 }}

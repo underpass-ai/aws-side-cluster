@@ -375,9 +375,17 @@ install_gpu_driver() {
     echo "NVIDIA driver already installed"
     return 0
   fi
-  echo "Installing NVIDIA driver (DKMS, repo sbsa/aarch64) para CUDA 13"
-  dnf install -y "kernel-devel-$(uname -r)" "kernel-headers-$(uname -r)" gcc make dkms
-  curl -sL https://developer.download.nvidia.com/compute/cuda/repos/amzn2023/sbsa/cuda-amzn2023.repo \
+  case "$(uname -m)" in
+    aarch64) NV_REPO_ARCH="sbsa" ;;
+    *)       NV_REPO_ARCH="x86_64" ;;
+  esac
+  echo "Installing NVIDIA driver (DKMS, repo $NV_REPO_ARCH) para CUDA 13"
+  KVER="$(uname -r)"
+  KMAJ="$(uname -r | grep -oE '^[0-9]+\.[0-9]+')"
+  # AL2023: el kernel por defecto (6.1) usa 'kernel-devel'; los streams (6.12/6.18) usan 'kernel<maj>-devel'.
+  dnf install -y "kernel$KMAJ-devel-$KVER" "kernel$KMAJ-headers-$KVER" gcc make dkms \
+    || dnf install -y "kernel-devel-$KVER" "kernel-headers-$KVER" gcc make dkms
+  curl -sL "https://developer.download.nvidia.com/compute/cuda/repos/amzn2023/$NV_REPO_ARCH/cuda-amzn2023.repo" \
     -o /etc/yum.repos.d/cuda-amzn2023.repo
   dnf clean all
   dnf install -y nvidia-open || dnf install -y cuda-drivers

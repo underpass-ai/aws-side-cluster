@@ -1,0 +1,64 @@
+# Sirve un modelo pequeño en el worker GPU AWS (g5g / NVIDIA-T4G, arm64) del POC.
+# La imagen vLLM es multi-arch (pull arm64). Los modelos ya los descargó el cloud-init del g5g
+# desde S3 a /opt/llm-models. Release SEPARADO (no toca los 4 grandes locales). El choreographer
+# lo alcanza por el Service interno del ns (cross-node vía el overlay WG/Calico).
+#
+# Instalar (cuando el nodo aws-gpu-worker-1 esté Ready + nvidia.com/gpu allocatable):
+#   helm upgrade --install aws-gpu-llm charts/local-llm -n underpass-labs -f charts/local-llm/values-aws-gpu.yaml
+
+namespace:
+  create: false
+  name: underpass-labs
+
+image:
+  # Imagen OFICIAL multi-arch. En el nodo x86 (g6/L4) baja la variante x86: su
+  # TORCH_CUDA_ARCH_LIST trae 8.0+ y el torch cu130 arranca en sm_80 → corre nativo
+  # en L4 (sm_89). Sin build custom ni ctr-import.
+  repository: docker.io/vllm/vllm-openai
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+# Selecciona el tipo de GPU AWS (T4G) por la label GFD del GPU Operator. Sin taint
+# (terraform kubernetes_node_taints=[]). tolerations vacío (no es control-plane).
+nodeSelector:
+  nvidia.com/gpu.product: NVIDIA-L4
+tolerations: []
+
+# Los nodos AWS (containerd) NO inyectan la GPU con el runtime por defecto (a diferencia del
+# cri-o local). Hace falta la RuntimeClass nvidia explícita (la que usan los pods del GPU Operator).
+runtimeClassName: nvidia
+
+modelCache:
+  hostPath: /opt/llm-models     # los .tar de S3 se extrajeron aquí en el g5g (cache HF)
+shmSize: "4Gi"
+
+hfTokenSecret:
+  name: huggingface-token
+  key: HF_TOKEN
+
+# Sin ingress: el choreographer lo alcanza por el Service interno vllm-phi4-aws:8000.
+ingress:
+  enabled: false
+
+defaults:
+  gpuMemoryUtilization: 0.90
+  maxModelLen: 16384
+  quantization: ""
+  extraArgs: []
+  resources:
+    limits:
+      nvidia.com/gpu: "1"
+    requests:
+      cpu: "2"
+      memory: 6Gi
+  service:
+    type: ClusterIP
+    port: 8000
+
+models:
+  - name: phi4-aws
+    repo: microsoft/Phi-4-mini-instruct      # ya en /opt/llm-models del g5g (S3)
+    servedName: phi4-mini-aws
+    role: general
+    # L4 (Ada, sm_89) soporta bf16 nativo → vLLM autodetecta el dtype del modelo.
+    extraArgs: []
