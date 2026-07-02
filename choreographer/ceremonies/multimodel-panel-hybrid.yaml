@@ -1,0 +1,125 @@
+# Variante HÍBRIDA de multimodel-panel: añade una perspectiva desde el nodo GPU
+# de AWS (g6/L4, phi4-mini-aws) entre el debate y la síntesis. Todo va por el
+# llm-gateway: los roles por alias (role:<rol>) y el step AWS pide el modelo
+# por NOMBRE exacto — si el nodo AWS está parado, el gateway lo excluye por
+# health-check y el step falla limpio; si está arriba, entra solo (sin cambios).
+version: "1.0"
+name: "multimodel_panel_hybrid"
+description: "Panel with three local model roles plus an AWS-hosted perspective, all via the label-driven llm-gateway"
+inputs:
+  optional:
+    - topic
+outputs:
+  panel_synthesis:
+    type: object
+states:
+  - id: OPENING
+    initial: true
+  - id: DEBATE
+  - id: AWS_PERSPECTIVE
+  - id: SYNTHESIS
+  - id: CLOSED
+    terminal: true
+transitions:
+  - from: OPENING
+    to: DEBATE
+    trigger: panel_opened
+    guards:
+      - opening_done
+  - from: DEBATE
+    to: AWS_PERSPECTIVE
+    trigger: debate_closed
+    guards:
+      - debate_done
+  - from: AWS_PERSPECTIVE
+    to: SYNTHESIS
+    trigger: aws_view_shared
+    guards:
+      - aws_view_done
+  - from: SYNTHESIS
+    to: CLOSED
+    trigger: synthesis_delivered
+    guards:
+      - synthesis_done
+steps:
+  - id: open_panel
+    state: OPENING
+    handler: general
+    config:
+      agent_kind: vllm
+      provider.model: "role:general"
+      provider.max_tokens: 512
+      provider.timeout_secs: 180
+      see_prior: false
+      num_agents: 1
+      prompt: "Open a technical panel on the topic: why hybrid local+cloud GPU clusters (Kubernetes + GPU Operator + WireGuard) matter for serving LLMs. Two sentences maximum."
+  - id: technical_debate
+    state: DEBATE
+    handler: coding
+    config:
+      agent_kind: vllm
+      provider.model: "role:coding"
+      provider.max_tokens: 768
+      provider.timeout_secs: 240
+      see_prior: true
+      rounds: 1
+      num_agents: 2
+      prompt: "As engineers, name the single hardest technical problem in that hybrid setup and one concrete mitigation. Be specific; three sentences maximum."
+  - id: aws_perspective
+    state: AWS_PERSPECTIVE
+    handler: cloud
+    config:
+      agent_kind: vllm
+      provider.model: "phi4-mini-aws"
+      provider.max_tokens: 512
+      provider.timeout_secs: 180
+      see_prior: true
+      num_agents: 1
+      prompt: "You are the cloud-side voice, running on an AWS L4 GPU joined to this cluster over WireGuard. Add the elasticity/cost perspective the local engineers may be missing. Three sentences maximum."
+  - id: synthesis
+    state: SYNTHESIS
+    handler: reasoning
+    config:
+      agent_kind: vllm
+      provider.model: "role:reasoning"
+      provider.max_tokens: 1536
+      provider.timeout_secs: 300
+      see_prior: true
+      num_agents: 1
+      prompt: "Synthesize the panel into one conclusion (two sentences) and one recommended next step (one sentence), reflecting both the local engineering view and the cloud perspective."
+guards:
+  opening_done:
+    type: automated
+    check: "step_status:open_panel:COMPLETED"
+  debate_done:
+    type: automated
+    check: "step_status:technical_debate:COMPLETED"
+  aws_view_done:
+    type: automated
+    check: "step_status:aws_perspective:COMPLETED"
+  synthesis_done:
+    type: automated
+    check: "step_status:synthesis:COMPLETED"
+roles:
+  - id: MODERATOR
+    allowed_actions:
+      - open_panel
+      - panel_opened
+  - id: ENGINEER_PANEL
+    allowed_actions:
+      - technical_debate
+      - debate_closed
+  - id: CLOUD_VOICE
+    allowed_actions:
+      - aws_perspective
+      - aws_view_shared
+  - id: RAPPORTEUR
+    allowed_actions:
+      - synthesis
+      - synthesis_delivered
+timeouts:
+  step_default: 300
+retry_policies:
+  default:
+    max_attempts: 2
+    backoff_seconds: 2
