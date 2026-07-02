@@ -28,6 +28,13 @@ tolerations:
     operator: Exists
     effect: NoSchedule
 
+# Handler nvidia EXPLÍCITO. Antes la inyección iba por default_runtime=nvidia que
+# gestionaba el toolkit del GPU Operator en cri-o; al unirse los workers AWS
+# (containerd) el toolkit cambió de modo y revirtió esa config (2026-07: los pods
+# nuevos salían sin GPU -> "Failed to infer device type"). El handler lo define
+# /etc/crio/crio.conf.d/99-zz-nvidia-runtime.conf (host-managed, pacman toolkit).
+runtimeClassName: nvidia
+
 # Cache HF compartida (evita re-descargar ~60GB). hostPath en el nodo.
 modelCache:
   hostPath: /opt/llm-models     # vacío "" => emptyDir efímero

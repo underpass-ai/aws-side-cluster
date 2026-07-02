@@ -88,6 +88,15 @@ data "aws_iam_policy_document" "bootstrap_s3" {
     actions   = ["s3:GetObject"]
     resources = ["${local.s3_bucket_arn}/${var.gpu_llm_models_prefix}/*"]
   }
+
+  # Observabilidad: el bootstrap shippea su log a logs/<hostname>-bootstrap.log
+  # cada 15s (diagnóstico sin SSM/SSH, p.ej. bucles de arranque). Solo escritura
+  # y SOLO bajo logs/*.
+  statement {
+    sid       = "ShipNodeLogs"
+    actions   = ["s3:PutObject"]
+    resources = ["${local.s3_bucket_arn}/logs/*"]
+  }
 }
 
 resource "aws_iam_role" "worker" {

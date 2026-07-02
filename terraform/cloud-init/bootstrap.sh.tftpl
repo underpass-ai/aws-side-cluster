@@ -59,6 +59,15 @@ LOG_FILE="/var/log/aws-side-cluster-bootstrap.log"
 
 exec > >(tee -a "$LOG_FILE") 2>&1
 
+# Observabilidad del nodo: shippea el log del bootstrap a S3 cada 15s mientras corre
+# (leer con: aws s3 cp s3://<bucket>/logs/<hostname>-bootstrap.log -). El rol worker
+# tiene PutObject SOLO sobre logs/*. Muere con el script (trap) y a prueba de fallos.
+( while true; do
+    aws s3 cp "$LOG_FILE" "s3://$S3_BUCKET/logs/$(hostname)-bootstrap.log" >/dev/null 2>&1 || true
+    sleep 15
+  done ) &
+trap "kill $! 2>/dev/null || true" EXIT
+
 install_common_packages() {
   local packages=(awscli)
 
@@ -67,7 +76,13 @@ install_common_packages() {
   fi
 
   if [[ "$KUBERNETES_WORKER_ENABLED" == "true" ]]; then
-    packages+=(containerd conntrack-tools socat ethtool iproute-tc)
+    packages+=(conntrack-tools socat ethtool iproute-tc)
+    # Runtime CRI: cri-o en los workers GPU (homogéneo con el control-plane local,
+    # para que el toolkit del GPU Operator trabaje en UN solo modo y no revierta
+    # la config del otro runtime); containerd en los workers sin GPU.
+    if [[ "$GPU_WORKER_ENABLED" != "true" ]]; then
+      packages+=(containerd)
+    fi
   fi
 
   echo "Installing common packages: $${packages[*]}"
@@ -241,6 +256,30 @@ configure_containerd() {
   systemctl enable --now containerd
 }
 
+configure_crio() {
+  # OJO: pkgs.k8s.io solo publica RPMs de cri-o hasta v1.32 (v1.33+ dan 403).
+  # Se usa el BUNDLE ESTÁTICO oficial (binarios + crun + conmon + unit systemd),
+  # pineado al MISMO patch que el control-plane local (cri-o 1.35.2).
+  local ver="1.35.2" arch
+  case "$(uname -m)" in
+    aarch64) arch="arm64" ;;
+    *)       arch="amd64" ;;
+  esac
+  if [[ ! -x /usr/local/bin/crio ]]; then
+    curl -fsSL "https://storage.googleapis.com/cri-o/artifacts/cri-o.$arch.v$ver.tar.gz" -o /tmp/crio.tar.gz
+    tar -C /tmp -xzf /tmp/crio.tar.gz
+    (cd /tmp/cri-o && ./install)
+    rm -rf /tmp/crio.tar.gz /tmp/cri-o
+  fi
+  # el bundle trae conflists CNI de ejemplo que ganarían a Calico por orden lexico; fuera
+  rm -f /etc/cni/net.d/*bridge* 2>/dev/null || true
+  # crio exige iptables o nft en el host (HostPortManager); AL2023 minimal no los trae
+  # (en el flujo containerd los arrastraba kubelet, que aquí se instala DESPUÉS).
+  dnf install -y iptables-nft
+  systemctl daemon-reload
+  systemctl enable --now crio
+}
+
 configure_kubernetes_kernel() {
   modprobe overlay || true
   modprobe br_netfilter || true
@@ -307,6 +346,12 @@ if [[ -z "$KUBEADM_JOIN_COMMAND" ]]; then
   exit 0
 fi
 
+# Con cri-o activo (worker GPU), fija el socket CRI explícito (evita ambigüedad
+# si containerd estuviera también presente).
+if systemctl is-active -q crio 2>/dev/null; then
+  KUBEADM_JOIN_COMMAND="$KUBEADM_JOIN_COMMAND --cri-socket=unix:///var/run/crio/crio.sock"
+fi
+
 endpoint="$(awk '{for(i=1;i<=NF;i++) if ($i == "join") {print $(i+1); exit}}' <<< "$KUBEADM_JOIN_COMMAND")"
 host="$${endpoint%:*}"
 port="$${endpoint##*:}"
@@ -326,12 +371,17 @@ JOIN
 
   chmod 0700 "$BOOTSTRAP_DIR/kubeadm-join.sh"
 
+  local runtime_unit="containerd.service"
+  if [[ "$GPU_WORKER_ENABLED" == "true" ]]; then
+    runtime_unit="crio.service"
+  fi
+
   cat > /etc/systemd/system/aws-side-cluster-kubeadm-join.service <<SERVICE
 [Unit]
 Description=Join local Kubernetes cluster over WireGuard
-After=network-online.target containerd.service wg-quick@aws-worker.service
+After=network-online.target $runtime_unit wg-quick@aws-worker.service
 Wants=network-online.target wg-quick@aws-worker.service
-Requires=containerd.service
+Requires=$runtime_unit
 
 [Service]
 Type=oneshot
@@ -358,7 +408,11 @@ configure_kubernetes_worker() {
   fi
 
   configure_kubernetes_kernel
-  configure_containerd
+  if [[ "$GPU_WORKER_ENABLED" == "true" ]]; then
+    configure_crio
+  else
+    configure_containerd
+  fi
   install_kubernetes_packages
   write_join_service
 }
