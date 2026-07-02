@@ -14,14 +14,15 @@
 imagePullSecrets:
   - name: ghcr-pull
 
-# Proveedor por defecto de los agentes kind=vllm: gemma4 local (mismo ns).
-# Endpoint/model por-agente se puede sobreescribir en RegisterAgent via
-# attributes provider.endpoint / provider.model.
+# Proveedor por defecto de los agentes kind=vllm: el llm-gateway (reverse proxy
+# OpenAI-compatible, charts/llm-gateway) que descubre los vLLM por label
+# underpass.ai/llm-role. Los agentes eligen modelo con provider.model:
+# nombre exacto o alias "role:<rol>" (coding/reasoning/general).
 providerEnv:
   - name: CHOREO_VLLM_ENDPOINT
-    value: http://vllm-gemma4:8000
+    value: http://llm-gateway:8000
   - name: CHOREO_VLLM_MODEL
-    value: gemma-4-26b
+    value: role:general
   - name: CHOREO_VLLM_MAX_TOKENS
     value: "1024"
   - name: CHOREO_VLLM_TIMEOUT_SECS

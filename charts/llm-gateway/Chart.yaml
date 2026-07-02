@@ -1,0 +1,10 @@
+apiVersion: v2
+name: llm-gateway
+description: |
+  Reverse proxy OpenAI-compatible para los vLLM del cluster. Descubre los
+  backends por label k8s (underpass.ai/llm-role), enruta por "model" (nombre
+  exacto o alias role:<rol>) y agrega /v1/models. Infra del POC aws-side-cluster
+  (NO es parte del producto choreographer).
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

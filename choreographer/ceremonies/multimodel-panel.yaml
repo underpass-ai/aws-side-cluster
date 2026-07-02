@@ -1,0 +1,101 @@
+# Ceremonia multimodelo vía llm-gateway: cada specialty es un rol de modelo
+# (label underpass.ai/llm-role) y el gateway enruta role:<rol> al vLLM real.
+#   general   -> gemma-4-26b        (abre el panel)
+#   coding    -> qwen3-coder-30b + devstral-small-24b (council de 2, deliberan)
+#   reasoning -> ernie-4.5-21b-a3b  (sintetiza)
+version: "1.0"
+name: "multimodel_panel"
+description: "Panel with three model roles routed through the label-driven llm-gateway"
+inputs:
+  optional:
+    - topic
+outputs:
+  panel_synthesis:
+    type: object
+states:
+  - id: OPENING
+    initial: true
+  - id: DEBATE
+  - id: SYNTHESIS
+  - id: CLOSED
+    terminal: true
+transitions:
+  - from: OPENING
+    to: DEBATE
+    trigger: panel_opened
+    guards:
+      - opening_done
+  - from: DEBATE
+    to: SYNTHESIS
+    trigger: debate_closed
+    guards:
+      - debate_done
+  - from: SYNTHESIS
+    to: CLOSED
+    trigger: synthesis_delivered
+    guards:
+      - synthesis_done
+steps:
+  - id: open_panel
+    state: OPENING
+    handler: general
+    config:
+      agent_kind: vllm
+      provider.model: "role:general"
+      provider.max_tokens: 512
+      provider.timeout_secs: 180
+      see_prior: false
+      num_agents: 1
+      prompt: "Open a technical panel on the topic: why hybrid local+cloud GPU clusters (Kubernetes + GPU Operator + WireGuard) matter for serving LLMs. Two sentences maximum."
+  - id: technical_debate
+    state: DEBATE
+    handler: coding
+    config:
+      agent_kind: vllm
+      provider.model: "role:coding"
+      provider.max_tokens: 768
+      provider.timeout_secs: 240
+      see_prior: true
+      rounds: 1
+      num_agents: 2
+      prompt: "As engineers, name the single hardest technical problem in that hybrid setup and one concrete mitigation. Be specific; three sentences maximum."
+  - id: synthesis
+    state: SYNTHESIS
+    handler: reasoning
+    config:
+      agent_kind: vllm
+      provider.model: "role:reasoning"
+      provider.max_tokens: 1536
+      provider.timeout_secs: 300
+      see_prior: true
+      num_agents: 1
+      prompt: "Synthesize the panel into one conclusion (two sentences) and one recommended next step (one sentence)."
+guards:
+  opening_done:
+    type: automated
+    check: "step_status:open_panel:COMPLETED"
+  debate_done:
+    type: automated
+    check: "step_status:technical_debate:COMPLETED"
+  synthesis_done:
+    type: automated
+    check: "step_status:synthesis:COMPLETED"
+roles:
+  - id: MODERATOR
+    allowed_actions:
+      - open_panel
+      - panel_opened
+  - id: ENGINEER_PANEL
+    allowed_actions:
+      - technical_debate
+      - debate_closed
+  - id: RAPPORTEUR
+    allowed_actions:
+      - synthesis
+      - synthesis_delivered
+timeouts:
+  step_default: 300
+retry_policies:
+  default:
+    max_attempts: 2
+    backoff_seconds: 2

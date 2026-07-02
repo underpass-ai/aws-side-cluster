@@ -1,0 +1,30 @@
+# Gateway de modelos: un solo endpoint OpenAI-compatible delante de N vLLM.
+namespace:
+  name: underpass-labs
+
+image:
+  # Stock python; el código va en un ConfigMap (stdlib only, sin pip).
+  # Totalmente cualificado: el nodo local es cri-o con short-name enforcing.
+  repository: docker.io/library/python
+  tag: "3.12-slim"
+  pullPolicy: IfNotPresent
+
+# Label de descubrimiento (Services de los modelos). El valor del label es el
+# rol (coding/reasoning/general) que se expone como alias "role:<rol>".
+discovery:
+  label: underpass.ai/llm-role
+  refreshSeconds: 30
+  probeTimeoutSeconds: 3
+
+backendTimeoutSeconds: 300
+
+service:
+  port: 8000
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
