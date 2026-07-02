@@ -1,0 +1,67 @@
+# Ceremonia mínima para probar el motor público (underpass-choreographer, chart OCI 0.1.0).
+# Dos estados útiles + cierre; un único specialty ("panel", seedeado por el chart con
+# config.seedSpecialties=panel -> NoopAgent + council homogéneo). Sigue el mismo esquema
+# que el catálogo del repo (tests/e2e/ceremonies/daily-standup.yaml).
+version: "1.0"
+name: "hello_panel"
+description: "Smoke ceremony: a panel opens a topic and then summarizes it"
+inputs:
+  optional:
+    - topic
+outputs:
+  panel_summary:
+    type: object
+states:
+  - id: PANEL_OPEN
+    initial: true
+  - id: SUMMARY
+  - id: CLOSED
+    terminal: true
+transitions:
+  - from: PANEL_OPEN
+    to: SUMMARY
+    trigger: topic_discussed
+    guards:
+      - opening_completed
+  - from: SUMMARY
+    to: CLOSED
+    trigger: summary_delivered
+    guards:
+      - summary_completed
+steps:
+  - id: opening_statement
+    state: PANEL_OPEN
+    handler: panel
+    config:
+      see_prior: false
+      num_agents: 1
+      prompt: "Open the panel: state in one sentence why hybrid local+cloud GPU clusters matter."
+  - id: closing_summary
+    state: SUMMARY
+    handler: panel
+    config:
+      see_prior: true
+      num_agents: 1
+      prompt: "Summarize the panel in one sentence, building on the opening statement."
+guards:
+  opening_completed:
+    type: automated
+    check: "step_status:opening_statement:COMPLETED"
+  summary_completed:
+    type: automated
+    check: "step_status:closing_summary:COMPLETED"
+roles:
+  - id: MODERATOR
+    allowed_actions:
+      - opening_statement
+      - topic_discussed
+  - id: RAPPORTEUR
+    allowed_actions:
+      - closing_summary
+      - summary_delivered
+timeouts:
+  step_default: 120
+retry_policies:
+  default:
+    max_attempts: 2
+    backoff_seconds: 1

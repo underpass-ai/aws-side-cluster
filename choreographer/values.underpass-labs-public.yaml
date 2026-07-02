@@ -1,0 +1,28 @@
+# Overlay para instalar el Choreographer PÚBLICO (github.com/underpass-ai/underpass-choreographer,
+# chart OCI ghcr.io/underpass-ai/charts/choreographer) en el ns de los modelos (underpass-labs).
+# Se aplica ENCIMA de charts/choreographer/values.embedded-nats.yaml del repo upstream:
+#
+#   helm -n underpass-labs upgrade --install choreographer \
+#     oci://ghcr.io/underpass-ai/charts/choreographer --version 0.1.0 \
+#     -f <checkout>/charts/choreographer/values.embedded-nats.yaml \
+#     -f choreographer/values.underpass-labs-public.yaml \
+#     --set image.digest=sha256:<digest-de-main> \
+#     --wait --timeout 10m --atomic
+#
+# La imagen es privada en GHCR: requiere el secret 'ghcr-pull' en el ns (dockerconfigjson).
+
+imagePullSecrets:
+  - name: ghcr-pull
+
+# Proveedor por defecto de los agentes kind=vllm: gemma4 local (mismo ns).
+# Endpoint/model por-agente se puede sobreescribir en RegisterAgent via
+# attributes provider.endpoint / provider.model.
+providerEnv:
+  - name: CHOREO_VLLM_ENDPOINT
+    value: http://vllm-gemma4:8000
+  - name: CHOREO_VLLM_MODEL
+    value: gemma-4-26b
+  - name: CHOREO_VLLM_MAX_TOKENS
+    value: "1024"
+  - name: CHOREO_VLLM_TIMEOUT_SECS
+    value: "180"
