@@ -27,3 +27,8 @@ providerEnv:
     value: "1024"
   - name: CHOREO_VLLM_TIMEOUT_SECS
     value: "180"
+  # Export de trazas (feature otel de la imagen, dormante sin esto): cada
+  # deliberacion/ceremonia sale como traza distribuida al Tempo del stack
+  # kube-prometheus (ns monitoring), OTLP gRPC plano (sin mTLS en el POC).
+  - name: CHOREO_OTLP_ENDPOINT
+    value: http://tempo.monitoring.svc:4317

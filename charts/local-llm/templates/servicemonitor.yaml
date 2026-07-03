@@ -1,0 +1,24 @@
+{{- if .Values.metrics.serviceMonitor.enabled }}
+# Un unico ServiceMonitor cubre TODOS los Services vLLM del namespace
+# (label part-of: local-llm), incluidos los de otros releases del mismo
+# chart (p.ej. aws-gpu-llm): activarlo solo en UN release para no
+# duplicar el scrape. vLLM expone metricas Prometheus nativas en
+# :8000/metrics (tokens/s, KV cache, TTFT, colas...).
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: vllm-{{ .Release.Name }}
+  namespace: {{ .Values.namespace.name }}
+  labels:
+    app.kubernetes.io/name: vllm-{{ .Release.Name }}
+    app.kubernetes.io/part-of: local-llm
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/part-of: local-llm
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: {{ .Values.metrics.serviceMonitor.interval | default "30s" }}
+{{- end }}

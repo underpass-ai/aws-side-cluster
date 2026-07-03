@@ -114,3 +114,11 @@ models:
     servedName: gemma-4-26b
     role: general
     extraArgs: []   # gemma no tiene tool-parser dedicado en vLLM aun; servir plano
+
+# ServiceMonitor para Prometheus (kube-prometheus-stack). Un solo SM cubre
+# todos los Services part-of=local-llm del ns: activar SOLO en este release
+# (el de aws-gpu-llm lo hereda desactivado por defecto).
+metrics:
+  serviceMonitor:
+    enabled: true
+    interval: 30s
