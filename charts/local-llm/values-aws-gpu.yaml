@@ -21,7 +21,8 @@ image:
 # Selecciona el tipo de GPU AWS (T4G) por la label GFD del GPU Operator. Sin taint
 # (terraform kubernetes_node_taints=[]). tolerations vacío (no es control-plane).
 nodeSelector:
-  nvidia.com/gpu.product: NVIDIA-L4
+  # OJO: con time-slicing activo, GFD renombra el producto con sufijo -SHARED.
+  nvidia.com/gpu.product: NVIDIA-L4-SHARED
 tolerations: []
 
 # Los nodos AWS (containerd) NO inyectan la GPU con el runtime por defecto (a diferencia del
@@ -41,24 +42,40 @@ ingress:
   enabled: false
 
 defaults:
-  gpuMemoryUtilization: 0.90
-  maxModelLen: 16384
+  # 2 modelos comparten la L4 (24GB) via time-slicing del device plugin
+  # (perfil l4-slice-2: nvidia.com/gpu replicas=2 solo en aws-gpu-worker-1).
+  # Reparto asimetrico (phi4 3.8B pesa mas que smollm3 3B); 16k de contexto no
+  # cabe en el presupuesto por proceso ("No available memory for cache blocks"):
+  # 8k + enforce-eager (sin CUDA graphs, ~1-2GB menos de overhead por proceso).
+  gpuMemoryUtilization: 0.45
+  maxModelLen: 8192
   quantization: ""
-  extraArgs: []
+  extraArgs: ["--enforce-eager"]
   resources:
     limits:
       nvidia.com/gpu: "1"
     requests:
-      cpu: "2"
-      memory: 6Gi
+      # g6.xlarge = 4 vCPU / 16GB para DOS pods vLLM + system: 1 cpu / 5Gi c/u.
+      cpu: "1"
+      memory: 5Gi
   service:
     type: ClusterIP
     port: 8000
 
 models:
   - name: phi4-aws
-    repo: microsoft/Phi-4-mini-instruct      # ya en /opt/llm-models del g5g (S3)
+    repo: microsoft/Phi-4-mini-instruct      # ya en /opt/llm-models (S3)
     servedName: phi4-mini-aws
     role: general
     # L4 (Ada, sm_89) soporta bf16 nativo → vLLM autodetecta el dtype del modelo.
-    extraArgs: []
+    gpuMemoryUtilization: 0.50               # 3.8B bf16 ~7.7GB de pesos
+  - name: smollm3-aws
+    repo: HuggingFaceTB/SmolLM3-3B           # tar en S3 models/ (subido 2026-06-26)
+    servedName: smollm3-aws
+    role: junior
+    gpuMemoryUtilization: 0.40               # 3B bf16 ~6.2GB de pesos
+
+# El SM lo crea el release local-llm (cubre todo el ns); aqui apagado.
+metrics:
+  serviceMonitor:
+    enabled: false
