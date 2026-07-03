@@ -1,0 +1,160 @@
+# La APELACION del caso typha — reunion compleja con replicas reales.
+# Secuela de csi-typha: al panel se le revela (a) su veredicto original y
+# (b) la causa raiz VERIFICADA, y debe deliberar por que su investigacion
+# fallo (evidencia alucinada canonizada, la pista --root /run/crun ignorada,
+# el esceptico acertado al que nadie hizo caso).
+#
+# Lo nuevo vs csi-typha: DOS councils de 2 agentes con rounds: 3 — el motor
+# corre peer review circular (agente i critica Y revisa la propuesta del
+# i+1, 3 rondas), y como provider.model es un alias role:<rol>, CADA llamada
+# (draft/critica/revision) round-robinea entre los modelos del rol: la
+# critica puede venir de un modelo distinto del que redacto.
+#   - council tecnico  role:coding  → qwen3-coder ↔ devstral
+#   - council contrapericia role:general → gemma (local 26B) ↔ phi4 (AWS L4)
+# Coste por council: 2 drafts + 3 rondas × 2 agentes × (critica+revision)
+# = 14 llamadas LLM secuenciales → timeouts de step holgados.
+version: "1.0"
+name: "csi_typha_appeal"
+description: "Appeal hearing on the typha case: two 2-agent councils with three adversarial peer-review rounds deliberate why the original investigation failed"
+inputs:
+  optional:
+    - case_ref
+outputs:
+  appeal_ruling:
+    type: object
+states:
+  - id: APPEAL_OPENING
+    initial: true
+  - id: TECHNICAL_REVIEW
+  - id: COUNTER_EXPERTISE
+  - id: FACT_LEDGER
+  - id: RULING
+  - id: CLOSED
+    terminal: true
+transitions:
+  - from: APPEAL_OPENING
+    to: TECHNICAL_REVIEW
+    trigger: appeal_admitted
+    guards:
+      - opening_done
+  - from: TECHNICAL_REVIEW
+    to: COUNTER_EXPERTISE
+    trigger: review_filed
+    guards:
+      - review_done
+  - from: COUNTER_EXPERTISE
+    to: FACT_LEDGER
+    trigger: counter_filed
+    guards:
+      - counter_done
+  - from: FACT_LEDGER
+    to: RULING
+    trigger: ledger_sealed
+    guards:
+      - ledger_done
+  - from: RULING
+    to: CLOSED
+    trigger: ruling_delivered
+    guards:
+      - ruling_done
+steps:
+  - id: open_appeal
+    state: APPEAL_OPENING
+    handler: appeal_moderator
+    config:
+      agent_kind: vllm
+      provider.model: "gemma-4-26b"
+      provider.max_tokens: 640
+      provider.timeout_secs: 240
+      see_prior: false
+      num_agents: 1
+      prompt: "You moderate an appeal hearing reviewing a failed forensic investigation. Present the appeal in at most five sentences. BACKGROUND: a six-model panel investigated a real incident (a container process surviving as an unkillable orphan holding port 5473 after a container-runtime configuration change). THEIR VERDICT blamed the combination hostNetwork+privileged and proposed prohibiting it — confidence High. THE VERIFIED ROOT CAUSE (from the node journal): crun/runc state is per-runtime-root; after default_runtime changed and cri-o restarted, the kill delegated to 'nvidia-container-runtime --root /run/crun kill <id>' which looked in a state root where the container was never registered ('container does not exist'), so the process was never signalled. KNOWN INVESTIGATION FAILURES: (1) the forensic lead asserted 'privileged:true is in the pod spec' as evidence — the case file never said that, it was fabricated; (2) the junior fact-checker canonised that fabrication as 'Fact'; (3) the biggest clue, '--root /run/crun' in the kill command, was exploited by nobody; (4) the skeptic's alternative (state visibility mismatch between runtimes) was the closest to the truth and was ignored. QUESTION FOR THE PANEL: why did a structured multi-agent review fail this way, and what concrete changes to the review process would have caught it?"
+  - id: technical_review
+    state: TECHNICAL_REVIEW
+    handler: appeal_engineers
+    config:
+      agent_kind: vllm
+      provider.model: "role:coding"
+      provider.max_tokens: 640
+      provider.timeout_secs: 240
+      see_prior: true
+      rounds: 3
+      num_agents: 2
+      prompt: "You are an engineer on the appeal's technical review council. Answer the moderator's question: diagnose WHY the original investigation converged on a wrong-but-plausible mechanism while fabricating evidence and ignoring the '--root /run/crun' clue. Name the specific reasoning failure (not a platitude), then propose exactly two process changes that would have caught it. Six sentences maximum. You will critique and revise a peer's answer across three rounds: be adversarial about claims that are not grounded in the background facts."
+  - id: counter_expertise
+    state: COUNTER_EXPERTISE
+    handler: appeal_experts
+    config:
+      agent_kind: vllm
+      provider.model: "role:general"
+      provider.max_tokens: 640
+      provider.timeout_secs: 300
+      see_prior: true
+      rounds: 3
+      num_agents: 2
+      prompt: "You are on the counter-expertise council reviewing the technical council's diagnosis (visible in the prior discussion). Attack it: what did THEY now miss or oversimplify about why the investigation failed? Are their two process changes actually implementable in a review run by language models, or wishful thinking? End with the single change you would keep. Five sentences maximum. You will critique and revise a peer's answer across three rounds; ground every claim in the background facts."
+  - id: fact_ledger
+    state: FACT_LEDGER
+    handler: appeal_junior
+    config:
+      agent_kind: vllm
+      provider.model: "smollm3-aws"
+      provider.max_tokens: 1536
+      provider.timeout_secs: 300
+      see_prior: true
+      num_agents: 1
+      prompt: "You are the junior clerk who canonised fabricated evidence in the original case. This is your redemption: from the appeal discussion so far, list as terse bullets (a) at most four claims that are directly grounded in the stated background facts, and (b) at most three claims the councils made that are speculation. Mark each with GROUNDED or SPECULATION. Add nothing else."
+  - id: ruling
+    state: RULING
+    handler: appeal_judge
+    config:
+      agent_kind: vllm
+      provider.model: "ernie-4.5-21b-a3b"
+      provider.max_tokens: 2048
+      provider.timeout_secs: 420
+      see_prior: true
+      num_agents: 1
+      prompt: "You are the appeal judge. Considering the technical council, the counter-expertise council and the clerk's ledger, deliver the ruling: (1) the root failure of the original investigation in two sentences; (2) the ONE process change most likely to prevent evidence fabrication from being canonised, in two sentences; (3) whether the original verdict should be vacated, affirmed in part, or affirmed — with one sentence of reasoning; (4) your confidence (high/medium/low) plus the assumption your ruling rests on."
+guards:
+  opening_done:
+    type: automated
+    check: "step_status:open_appeal:COMPLETED"
+  review_done:
+    type: automated
+    check: "step_status:technical_review:COMPLETED"
+  counter_done:
+    type: automated
+    check: "step_status:counter_expertise:COMPLETED"
+  ledger_done:
+    type: automated
+    check: "step_status:fact_ledger:COMPLETED"
+  ruling_done:
+    type: automated
+    check: "step_status:ruling:COMPLETED"
+roles:
+  - id: APPEAL_MODERATOR
+    allowed_actions:
+      - open_appeal
+      - appeal_admitted
+  - id: TECHNICAL_COUNCIL
+    allowed_actions:
+      - technical_review
+      - review_filed
+  - id: COUNTER_COUNCIL
+    allowed_actions:
+      - counter_expertise
+      - counter_filed
+  - id: CLERK
+    allowed_actions:
+      - fact_ledger
+      - ledger_sealed
+  - id: APPEAL_JUDGE
+    allowed_actions:
+      - ruling
+      - ruling_delivered
+timeouts:
+  step_default: 1200
+retry_policies:
+  default:
+    max_attempts: 2
+    backoff_seconds: 2

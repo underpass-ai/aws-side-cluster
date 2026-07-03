@@ -1,0 +1,181 @@
+# CSI: typha — post-mortem whodunit de un incidente REAL (2026-07-02, wrx80-node1).
+# Al panel se le da la evidencia cruda del journal SIN la conclusion y debe deducir
+# la causa raiz. La causa verificada (para puntuar el veredicto, NO esta en los
+# prompts): el estado de crun/runc es por-runtime-root; al cambiar default_runtime
+# y reiniciar crio, el contenedor creado con el handler anterior es invisible para
+# el nuevo runtime -> kill "container does not exist" -> proceso huerfano retiene
+# el puerto -> los reemplazos crashean con "address already in use".
+#
+# 6 modelos, 6 papeles: gemma abre el caso (local), qwen forense (local), devstral
+# esceptico (local), phi4 perito cloud (AWS L4), smollm3 testigo junior (AWS L4,
+# time-sliced con phi4), ernie juez con thinking (local). Todos via llm-gateway
+# por NOMBRE exacto (sin round-robin de roles: cada papel es de un modelo concreto).
+version: "1.0"
+name: "csi_typha"
+description: "Six-model forensic panel deducing the root cause of a real container-runtime incident from raw journal evidence"
+inputs:
+  optional:
+    - case_ref
+outputs:
+  verdict:
+    type: object
+states:
+  - id: CASE_OPENING
+    initial: true
+  - id: FORENSICS
+  - id: CROSS_EXAMINATION
+  - id: CLOUD_EXPERTISE
+  - id: FACT_CHECK
+  - id: VERDICT
+  - id: CLOSED
+    terminal: true
+transitions:
+  - from: CASE_OPENING
+    to: FORENSICS
+    trigger: case_presented
+    guards:
+      - opening_done
+  - from: FORENSICS
+    to: CROSS_EXAMINATION
+    trigger: hypothesis_filed
+    guards:
+      - forensics_done
+  - from: CROSS_EXAMINATION
+    to: CLOUD_EXPERTISE
+    trigger: hypothesis_challenged
+    guards:
+      - cross_exam_done
+  - from: CLOUD_EXPERTISE
+    to: FACT_CHECK
+    trigger: expert_view_shared
+    guards:
+      - cloud_expert_done
+  - from: FACT_CHECK
+    to: VERDICT
+    trigger: facts_established
+    guards:
+      - fact_check_done
+  - from: VERDICT
+    to: CLOSED
+    trigger: verdict_delivered
+    guards:
+      - verdict_done
+steps:
+  - id: open_case
+    state: CASE_OPENING
+    handler: moderator
+    config:
+      agent_kind: vllm
+      provider.model: "gemma-4-26b"
+      provider.max_tokens: 512
+      provider.timeout_secs: 240
+      see_prior: false
+      num_agents: 1
+      prompt: "You moderate a forensic panel of engineers investigating a Kubernetes incident. Present the case to the panel in at most four sentences, ending with the key question they must answer. CASE FILE (raw evidence from the node journal, wrx80-node1, Arch Linux, cri-o 1.35.2): (1) 18:38 node boots; cri-o (PID 1232) starts the calico-typha container f8b6aed0 (hostNetwork), whose host process PID 4830 listens on port 5473. (2) ~20:26 the NVIDIA GPU Operator toolkit daemonset rewrites the cri-o configuration (default_runtime changed to nvidia) and restarts cri-o; kubelet briefly logs 'crio.sock: no such file'. (3) From then on, every attempt to kill container f8b6aed0 delegates to '/usr/bin/nvidia-container-runtime --root /run/crun kill f8b6aed0' and fails with 'container does not exist'. (4) PID 4830 stays alive holding port 5473; every replacement typha container crashes with 'bind: address already in use'; 503 restarts accumulate. (5) The same morning a nats container showed the same pattern with port 8222 inside its own network namespace. (6) 'kubectl delete pod --force' removes the pod object but PID 4830 survives. QUESTION: what is the root-cause mechanism, why can the new cri-o not kill the old container, and what are the remediation and prevention?"
+  - id: forensic_analysis
+    state: FORENSICS
+    handler: forensics
+    config:
+      agent_kind: vllm
+      provider.model: "qwen3-coder-30b"
+      provider.max_tokens: 1024
+      provider.timeout_secs: 300
+      see_prior: true
+      num_agents: 1
+      prompt: "You are the lead forensic engineer. Using ONLY the case file evidence presented by the moderator, state your root-cause hypothesis: name the exact mechanism that makes the container unkillable, explain why the kill command reports 'container does not exist' while the process is demonstrably alive, and why the nats container shows the same pattern. Cite which evidence items support each claim. Finish with your proposed remediation (one step) and prevention (one rule). Maximum eight sentences."
+  - id: cross_examination
+    state: CROSS_EXAMINATION
+    handler: skeptic
+    config:
+      agent_kind: vllm
+      provider.model: "devstral-small-24b"
+      provider.max_tokens: 768
+      provider.timeout_secs: 300
+      see_prior: true
+      num_agents: 1
+      prompt: "You are the skeptic. Attack the forensic hypothesis: name the single weakest link in its causal chain and propose ONE alternative explanation that also fits every evidence item (for example: a zombie/orphan reaping problem, a cgroup leak, a kubelet bug, systemd killing the wrong scope). Then state which single piece of additional evidence would discriminate between the two hypotheses. Maximum six sentences."
+  - id: cloud_expert
+    state: CLOUD_EXPERTISE
+    handler: cloud_expert
+    config:
+      agent_kind: vllm
+      provider.model: "phi4-mini-aws"
+      provider.max_tokens: 512
+      provider.timeout_secs: 300
+      see_prior: true
+      num_agents: 1
+      prompt: "You are the external expert witness, testifying remotely from an AWS L4 GPU node joined to this very cluster over WireGuard - the same GPU Operator manages your node, so this incident class could reach you too. In at most five sentences: state whether managed/cloud Kubernetes environments would have prevented this incident or merely hidden it, and name the one operational practice (not a tool) that protects a hybrid fleet from runtime-configuration drift."
+  - id: junior_fact_check
+    state: FACT_CHECK
+    handler: junior
+    config:
+      agent_kind: vllm
+      provider.model: "smollm3-aws"
+      # SmolLM3 es thinking por defecto y el /no_think solo aplica en system
+      # (el provider manda el prompt como user): presupuesto para think+answer.
+      provider.max_tokens: 1536
+      provider.timeout_secs: 300
+      see_prior: true
+      num_agents: 1
+      prompt: "/no_think You are the junior investigator keeping the panel honest. From the discussion so far, list as short bullets: (a) at most four facts that are directly supported by the case file, and (b) at most three claims the senior engineers made that are plausible but NOT directly evidenced. Do not add new theories. Be terse."
+  - id: verdict
+    state: VERDICT
+    handler: judge
+    config:
+      agent_kind: vllm
+      provider.model: "ernie-4.5-21b-a3b"
+      provider.max_tokens: 2048
+      provider.timeout_secs: 420
+      see_prior: true
+      num_agents: 1
+      prompt: "You are the judge. Weigh the forensic hypothesis, the skeptic's alternative, the cloud expert's testimony and the junior's fact-check. Deliver the verdict: (1) the root-cause mechanism in two sentences, naming the specific component state that diverged; (2) why the kill failed, in one sentence; (3) remediation in one sentence; (4) prevention rule in one sentence; (5) your confidence (high/medium/low) and the single assumption your verdict rests on."
+guards:
+  opening_done:
+    type: automated
+    check: "step_status:open_case:COMPLETED"
+  forensics_done:
+    type: automated
+    check: "step_status:forensic_analysis:COMPLETED"
+  cross_exam_done:
+    type: automated
+    check: "step_status:cross_examination:COMPLETED"
+  cloud_expert_done:
+    type: automated
+    check: "step_status:cloud_expert:COMPLETED"
+  fact_check_done:
+    type: automated
+    check: "step_status:junior_fact_check:COMPLETED"
+  verdict_done:
+    type: automated
+    check: "step_status:verdict:COMPLETED"
+roles:
+  - id: MODERATOR
+    allowed_actions:
+      - open_case
+      - case_presented
+  - id: FORENSIC_LEAD
+    allowed_actions:
+      - forensic_analysis
+      - hypothesis_filed
+  - id: SKEPTIC
+    allowed_actions:
+      - cross_examination
+      - hypothesis_challenged
+  - id: CLOUD_WITNESS
+    allowed_actions:
+      - cloud_expert
+      - expert_view_shared
+  - id: JUNIOR_INVESTIGATOR
+    allowed_actions:
+      - junior_fact_check
+      - facts_established
+  - id: JUDGE
+    allowed_actions:
+      - verdict
+      - verdict_delivered
+timeouts:
+  step_default: 480
+retry_policies:
+  default:
+    max_attempts: 2
+    backoff_seconds: 2
