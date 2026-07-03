@@ -1,0 +1,188 @@
+# Variante HÍBRIDA local + AWS bursting: igual que article-decision-traces.yaml pero con un paso
+# extra `aws_perspective` servido por un modelo en el worker GPU AWS (g5g / NVIDIA-T4G, vLLM arm64,
+# Service vllm-phi4-aws en underpass-labs). Demuestra la topología del POC: councils locales (4x3090)
+# + un agente que corre en una GPU de AWS, deliberando en la MISMA ceremonia, con su decision trace.
+#
+# Flujo: FRAMING -> DRAFTING -> CRITIQUE -> AWS_BURST -> SYNTHESIS -> SEALED
+# Modelos: gemma (facilita) -> qwen (borra) -> ernie (critica) -> phi4@AWS (perspectiva burst) -> devstral (edita)
+
+version: "1.0"
+name: "article_decision_traces_planning_hybrid"
+description: "Editorial planning ceremony, hybrid local+AWS: a burst agent on an AWS T4G GPU joins the council."
+
+inputs:
+  required:
+    - article_brief
+  optional:
+    - audience_notes
+outputs:
+  article_outline:
+    type: object
+
+states:
+  - id: FRAMING
+    initial: true
+  - id: DRAFTING
+  - id: CRITIQUE
+  - id: AWS_BURST
+  - id: SYNTHESIS
+  - id: SEALED
+    terminal: true
+
+transitions:
+  - from: FRAMING
+    to: DRAFTING
+    trigger: brief_framed
+    guards: [frame_done]
+  - from: DRAFTING
+    to: CRITIQUE
+    trigger: angles_drafted
+    guards: [draft_done]
+  - from: CRITIQUE
+    to: AWS_BURST
+    trigger: gaps_reviewed
+    guards: [critique_done]
+  - from: AWS_BURST
+    to: SYNTHESIS
+    trigger: aws_weighed
+    guards: [aws_done]
+  - from: SYNTHESIS
+    to: SEALED
+    trigger: outline_sealed
+    guards: [synthesis_done]
+
+steps:
+  - id: frame_scope
+    state: FRAMING
+    handler: facilitation_prompt
+    config:
+      specialty: editorial_general
+      agent_kind: vllm
+      num_agents: 1
+      rounds: 0
+      provider.endpoint: "http://vllm-gemma4:8000"
+      provider.model: "gemma-4-26b"
+      provider.max_tokens: 1024
+      provider.timeout_secs: 120
+      prompt: >-
+        You are the editorial facilitator. Reframe the brief for an article about the
+        Choreographer's "decision traces". State the thesis in one sentence, the target
+        reader, and the three things the reader must remember. Set scope; hand off.
+
+  - id: draft_angles
+    state: DRAFTING
+    handler: persona_prompt
+    config:
+      specialty: editorial_coding
+      agent_kind: vllm
+      num_agents: 2
+      rounds: 1
+      provider.endpoint: "http://vllm-qwen3-coder:8000"
+      provider.model: "qwen3-coder-30b"
+      provider.max_tokens: 1536
+      provider.timeout_secs: 240
+      prompt: >-
+        You are a technical contributor. Propose an article outline (4-6 sections, one
+        sentence each) that shows how the Choreographer yields auditable decision traces:
+        councils, the LLM-as-judge scorer, and the OpenTelemetry span-by-span replay.
+        Be concrete; in the critique round push back hard on weak sections.
+
+  - id: critique_gaps
+    state: CRITIQUE
+    handler: challenge_prompt
+    config:
+      specialty: editorial_reasoning
+      agent_kind: vllm
+      num_agents: 1
+      rounds: 0
+      provider.endpoint: "http://vllm-ernie45-thinking:8000"
+      provider.model: "ernie-4.5-21b-a3b"
+      provider.max_tokens: 2048
+      provider.timeout_secs: 300
+      prompt: >-
+        You are the critical reviewer. Challenge the proposed outline: which claim is weak
+        or not verifiable, what is missing for a technical reader, which section is redundant.
+        Name the concrete gaps; do not rewrite the outline.
+
+  # --- El paso que corre en la GPU de AWS (burst) ---
+  - id: aws_perspective
+    state: AWS_BURST
+    handler: persona_prompt
+    config:
+      specialty: editorial_aws
+      agent_kind: vllm
+      num_agents: 1
+      rounds: 0
+      provider.endpoint: "http://vllm-phi4-aws:8000"   # Service del modelo en el T4G (AWS)
+      provider.model: "phi4-mini-aws"
+      provider.max_tokens: 1024
+      provider.timeout_secs: 240
+      prompt: >-
+        You are an independent analyst running on a burst GPU node in AWS. Given the outline
+        and the reviewer's critique, give ONE decisive recommendation: which gap matters most
+        to fix first, and is the outline ready to write? Two or three sentences, no preamble.
+
+  - id: synthesize_outline
+    state: SYNTHESIS
+    handler: synthesis_prompt
+    config:
+      specialty: editorial_editor
+      agent_kind: vllm
+      num_agents: 1
+      rounds: 0
+      provider.endpoint: "http://vllm-devstral:8000"
+      provider.model: "devstral-small-24b"
+      provider.max_tokens: 1536
+      provider.timeout_secs: 240
+      prompt: >-
+        You are the editor. Integrate the drafted outline, the reviewer's critique, and the
+        AWS analyst's recommendation into the FINAL article outline: the definitive section
+        list, the winning angle, and the next concrete action (which section first, who owns it).
+        This output is the acta.
+
+guards:
+  frame_done:
+    type: automated
+    check: "step_status:frame_scope:COMPLETED"
+  draft_done:
+    type: automated
+    check: "step_status:draft_angles:COMPLETED"
+  critique_done:
+    type: automated
+    check: "step_status:critique_gaps:COMPLETED"
+  aws_done:
+    type: automated
+    check: "step_status:aws_perspective:COMPLETED"
+  synthesis_done:
+    type: automated
+    check: "step_status:synthesize_outline:COMPLETED"
+
+roles:
+  - id: FACILITATOR
+    allowed_actions:
+      - frame_scope
+      - brief_framed
+  - id: CONTRIBUTOR
+    allowed_actions:
+      - draft_angles
+      - angles_drafted
+  - id: REVIEWER
+    allowed_actions:
+      - critique_gaps
+      - gaps_reviewed
+  - id: AWS_ANALYST
+    allowed_actions:
+      - aws_perspective
+      - aws_weighed
+  - id: EDITOR
+    allowed_actions:
+      - synthesize_outline
+      - outline_sealed
+
+timeouts:
+  step_default: 300
+
+retry_policies:
+  default:
+    max_attempts: 2
+    backoff_seconds: 2
