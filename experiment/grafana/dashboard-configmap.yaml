@@ -1,0 +1,101 @@
+# Dashboard del articulo, pre-provisionado. Ventana temporal fijada a la del
+# experimento (2026-07-04 13:04-13:26 CEST): al abrirlo ya se ve la vida y
+# muerte del worker sin tocar nada.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-labs-dashboards
+  namespace: underpass-labs
+data:
+  disposable-compute.json: |
+    {
+      "uid": "disposable-compute",
+      "title": "Disposable Compute, Persistent Evidence",
+      "tags": ["experiment"],
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "refresh": "",
+      "time": { "from": "2026-07-04T11:04:00.000Z", "to": "2026-07-04T11:26:00.000Z" },
+      "panels": [
+        {
+          "type": "text",
+          "gridPos": { "h": 3, "w": 24, "x": 0, "y": 0 },
+          "options": {
+            "mode": "markdown",
+            "content": "## The life and death of an ephemeral GPU worker\n**13:07:41** instance running · **13:11:30** reviewer serving · **13:11:51–13:13:23** five evidence-bound decisions (profile C) · **13:23:11** killed by the idle reaper (`idle_for=350s`) — the decisions remain reconstructable."
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "vLLM requests running on the ephemeral worker (NVIDIA L4)",
+          "datasource": { "type": "prometheus", "uid": "prom-mon" },
+          "gridPos": { "h": 8, "w": 24, "x": 0, "y": 3 },
+          "fieldConfig": {
+            "defaults": {
+              "custom": { "fillOpacity": 25, "lineWidth": 2, "spanNulls": true },
+              "color": { "mode": "fixed", "fixedColor": "super-light-blue" },
+              "min": 0
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "expr": "sum(vllm:num_requests_running{model_name=~\"phi4-mini-aws|smollm3-aws\"}) or vector(0)",
+              "legendFormat": "requests running (L4 models)",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "Requests running by model (whole hybrid cluster)",
+          "datasource": { "type": "prometheus", "uid": "prom-mon" },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 11 },
+          "fieldConfig": {
+            "defaults": { "custom": { "fillOpacity": 15, "lineWidth": 1 }, "min": 0 },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "expr": "vllm:num_requests_running",
+              "legendFormat": "{{model_name}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "KV-cache usage % — the two models time-slicing the L4",
+          "datasource": { "type": "prometheus", "uid": "prom-mon" },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 11 },
+          "fieldConfig": {
+            "defaults": {
+              "custom": { "fillOpacity": 15, "lineWidth": 1 },
+              "unit": "percentunit",
+              "min": 0
+            },
+            "overrides": []
+          },
+          "targets": [
+            {
+              "expr": "vllm:gpu_cache_usage_perc{model_name=~\"phi4-mini-aws|smollm3-aws\"}",
+              "legendFormat": "{{model_name}}",
+              "refId": "A"
+            }
+          ]
+        },
+        {
+          "type": "logs",
+          "title": "Evidence stream — every gate verdict, live from Loki",
+          "datasource": { "type": "loki", "uid": "loki-mon" },
+          "gridPos": { "h": 10, "w": 24, "x": 0, "y": 19 },
+          "options": { "showTime": true, "wrapLogMessage": false, "sortOrder": "Ascending" },
+          "targets": [
+            {
+              "expr": "{namespace=\"underpass-labs\", pod=~\"choreographer.*\"} |= \"exp-task-\" |= \"validator verdict\"",
+              "refId": "A"
+            }
+          ]
+        }
+      ]
+    }
