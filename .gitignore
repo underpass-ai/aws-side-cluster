@@ -11,3 +11,6 @@ terraform/generated/*
 backups/
 __pycache__/
 *.pyc
+
+# Claude Code local session settings (permisos personales, no versionar)
+.claude/settings.local.json*
