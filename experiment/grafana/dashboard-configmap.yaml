@@ -71,7 +71,7 @@ data:
           "fieldConfig": {
             "defaults": {
               "custom": { "fillOpacity": 15, "lineWidth": 1 },
-              "unit": "percentunit",
+              "unit": "percent",
               "min": 0
             },
             "overrides": []
