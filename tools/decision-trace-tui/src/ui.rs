@@ -101,11 +101,11 @@ fn draw_waterfall(f: &mut Frame, area: Rect, st: &AppState) {
 
     let mut items: Vec<ListItem> = vec![ListItem::new(Line::from(vec![
         TSpan::styled(
-            format!("   {:<12}", "FASE"),
+            format!("   {:<12}", "PHASE"),
             Style::default().fg(DIM).add_modifier(Modifier::BOLD),
         ),
-        TSpan::styled(format!("{:<28}", "QUIEN"), Style::default().fg(DIM).add_modifier(Modifier::BOLD)),
-        TSpan::styled("TIEMPO", Style::default().fg(DIM).add_modifier(Modifier::BOLD)),
+        TSpan::styled(format!("{:<28}", "WHO"), Style::default().fg(DIM).add_modifier(Modifier::BOLD)),
+        TSpan::styled("TIME", Style::default().fg(DIM).add_modifier(Modifier::BOLD)),
     ]))];
 
     items.extend(rec.phases.iter().skip(st.span_scroll).map(|p| {
@@ -130,13 +130,13 @@ fn draw_waterfall(f: &mut Frame, area: Rect, st: &AppState) {
 
     if rec.phases.is_empty() {
         items.push(ListItem::new(Line::from(TSpan::styled(
-            " (sin fases deliberativas en la traza — ver spans crudos con --no-tui) ",
+            " (no deliberative phases in this trace — see raw spans with --no-tui) ",
             Style::default().fg(DIM),
         ))));
     }
 
     let title = vec![
-        TSpan::styled(" ⧗ timeline de la decisión ", Style::default().fg(CYAN).add_modifier(Modifier::BOLD)),
+        TSpan::styled(" ⧗ decision timeline ", Style::default().fg(CYAN).add_modifier(Modifier::BOLD)),
         TSpan::styled(
             format!(
                 "· {:.1}s · trace {} · {} spans ",
@@ -176,11 +176,11 @@ fn draw_artifact(f: &mut Frame, area: Rect, st: &AppState) {
             label("claims"),
             TSpan::styled(format!("{} total", a.final_claims_total), Style::default().fg(FG)),
             TSpan::styled(
-                format!("  ✔ {} con evidencia", a.claims_with_evidence),
+                format!("  ✔ {} with evidence", a.claims_with_evidence),
                 Style::default().fg(GREEN),
             ),
             TSpan::styled(
-                format!("  ✘ {} sin", a.claims_without_evidence),
+                format!("  ✘ {} without", a.claims_without_evidence),
                 Style::default().fg(if a.claims_without_evidence == 0 { DIM } else { RED }),
             ),
         ]),
@@ -188,9 +188,9 @@ fn draw_artifact(f: &mut Frame, area: Rect, st: &AppState) {
             label("escaped"),
             TSpan::styled(
                 if escaped_ok {
-                    " ✔ 0 unsupported claims llegaron a la decisión ".to_string()
+                    " ✔ 0 unsupported claims reached the decision ".to_string()
                 } else {
-                    format!(" ✘ {} unsupported claims ESCAPARON ", a.unsupported_claim_escape_count)
+                    format!(" ✘ {} unsupported claims ESCAPED ", a.unsupported_claim_escape_count)
                 },
                 Style::default()
                     .fg(Color::Black)
@@ -270,9 +270,9 @@ fn draw_events(f: &mut Frame, area: Rect, st: &AppState) {
         })
         .collect();
     let title = vec![
-        TSpan::styled(" ☰ evidencia ", Style::default().fg(YELLOW).add_modifier(Modifier::BOLD)),
+        TSpan::styled(" ☰ evidence ", Style::default().fg(YELLOW).add_modifier(Modifier::BOLD)),
         TSpan::styled(
-            format!("Loki · {} eventos ", st.rec.events.len()),
+            format!("Loki · {} events ", st.rec.events.len()),
             Style::default().fg(DIM),
         ),
     ];
@@ -282,22 +282,22 @@ fn draw_events(f: &mut Frame, area: Rect, st: &AppState) {
 fn draw_footer(f: &mut Frame, area: Rect, st: &AppState) {
     let msg = match st.rec.worker_alive_now {
         Some(false) => TSpan::styled(
-            " ✔ EL WORKER GPU YA NO EXISTE — esta decisión se ha reconstruido solo con la evidencia persistida ",
+            " ✔ THE GPU WORKER NO LONGER EXISTS — this decision was rebuilt from persisted evidence alone ",
             Style::default().fg(Color::Black).bg(GREEN).add_modifier(Modifier::BOLD),
         ),
         Some(true) => TSpan::styled(
-            " ⚡ el worker sigue vivo (la reconstrucción no depende de él) ",
+            " ⚡ the worker is still alive (the reconstruction does not depend on it) ",
             Style::default().fg(Color::Black).bg(YELLOW).add_modifier(Modifier::BOLD),
         ),
         None => TSpan::styled(
-            " ? estado del worker desconocido (aws cli no disponible) ",
+            " ? worker state unknown (aws cli not available) ",
             Style::default().fg(DIM),
         ),
     };
     f.render_widget(
         Paragraph::new(Line::from(vec![
             msg,
-            TSpan::styled("   q salir · tab foco · ↑↓ scroll", Style::default().fg(DIM)),
+            TSpan::styled("   q quit · tab focus · ↑↓ scroll", Style::default().fg(DIM)),
         ]))
         .alignment(Alignment::Left)
         .block(panel(vec![], false)),

@@ -115,7 +115,7 @@ fn print_plain(rec: &Reconstruction) {
         rec.spans.len()
     );
     println!(
-        "claims: {} total, {} con evidencia, {} rechazadas, {} ESCAPED",
+        "claims: {} total, {} with evidence, {} rejected, {} ESCAPED",
         a.final_claims_total, a.claims_with_evidence, a.rejected_claims, a.unsupported_claim_escape_count
     );
     if let Some(w) = &a.worker_lifecycle {
@@ -128,7 +128,7 @@ fn print_plain(rec: &Reconstruction) {
     for s in &rec.spans {
         println!("{}{} ({:.1}ms)", "  ".repeat(s.depth), s.name, s.duration_ms());
     }
-    println!("-- eventos ({}) --", rec.events.len());
+    println!("-- events ({}) --", rec.events.len());
     for e in &rec.events {
         println!("{} {} {}", e.ts, e.message, e.detail);
     }
