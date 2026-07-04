@@ -924,3 +924,33 @@ Versión española:
 ```text
 Este artículo no debe vender un sistema multiagente. Debe mostrar un sistema de decisiones auditables ejecutándose sobre cómputo GPU desechable.
 ```
+
+---
+
+## 27. Decisiones de la revisión (2026-07-04, sesión de arranque)
+
+1. **El clímax es un artefacto: TUI en Rust.** `decision-trace-tui` (ratatui):
+   dado un `trace_id`, consulta Tempo (spans), Loki (logs por trace_id) y el
+   decision JSON persistido, y renderiza el registro completo de la decisión
+   — con el worker ya apagado. Es la captura estrella del artículo y el
+   artefacto ejecutable que puede correr cualquier lector.
+2. **Dos hooks, a contrastar antes de publicar**: (a) la historia del fracaso
+   (el fact-checker de 3B canonizó evidencia fabricada y el juez-LLM dictó
+   High confidence — logs reales de csi-typha), y (b) el hook arquitectural
+   del §17. Se escriben ambos y se elige con lectores de prueba.
+3. **Métrica citable extra**: bytes de evidencia persistida vs GPU-minutos
+   consumidos (cuantifica "compute is disposable, evidence is persistent").
+4. **El G6 es load-bearing**: el skeptical reviewer corre EN la L4 — el worker
+   efímero contribuye materialmente a la decisión que le sobrevive.
+5. **Ornith 35B NO bloquea**: mención como futuro primary (está de moda y
+   puede traer visitas — citarlo en "what comes next"), pero el experimento
+   corre con los modelos ya desplegados. Confirmado: es **Loki** (no Roki).
+
+## 28. Hallazgo técnico que simplifica el plan
+
+El motor ya trae `OutputContract` (choreo-core `value_objects/output_contract.rs`:
+schema JSON o reglas por campo) y `deliberate.rs` ya valida contra él y rechaza
+con `NoValidProposal{contract_id}` — el juez determinista EXISTE. Lo que falta
+es exponerlo en el YAML de ceremonias (los step documents no lo mapean) y un
+validator de grounding (evidence_refs ⊆ evidence pack). Ambas son PRs de
+cableado sobre puertos existentes, no features nuevas.
