@@ -9,12 +9,14 @@ todo. Complementa `docs/network-planes.md` (separación de nombres) y
 Control-plane Kubernetes local (`wrx80-node1`, `192.168.1.56`) + workers EC2
 efímeros, unidos por **WireGuard en estrella**: el PC (control-plane) es el
 **hub** y cada worker es un radio. **No hay túnel directo worker↔worker**; el
-tráfico entre workers se enruta por el PC.
+tráfico entre workers se enruta por el PC. Dos pools de workers con labels
+distintas: `underpass.ai/node-pool=aws-poc` (t3.micro genéricos) y
+`node-pool=aws-gpu` (g6.xlarge, NVIDIA L4).
 
 ```text
-            aws-worker-1 (10.90.0.11)
-                   \
-   LAN 192.168.1.0/24 \        WireGuard (estrella)
+            aws-worker-1 (10.90.0.11)      aws-gpu-worker-1 (10.90.0.21)
+                   \                          /   g6.xlarge, NVIDIA L4
+   LAN 192.168.1.0/24 \    WireGuard (estrella)  /
    wrx80-node1 ─────── PC hub (10.90.0.1) ─────── aws-worker-2 (10.90.0.12)
    MetalLB .240-.250         (UDP/51820)
 ```
@@ -23,7 +25,7 @@ tráfico entre workers se enruta por el PC.
 
 | Red | CIDR | Notas |
 |---|---|---|
-| WireGuard | `10.90.0.0/24` | PC `.1`, worker-N `.(10+N)` (w1 `.11`, w2 `.12`) |
+| WireGuard | `10.90.0.0/24` | PC `.1`; pool generico `aws-worker-N` = `.(10+N)` (w1 `.11`, w2 `.12`); pool GPU `aws-gpu-worker-N` = `.(20+N)` (gpu1 `.21`, peer WG `worker-21`) |
 | VPC AWS | `10.80.0.0/16` | subnet pública `10.80.1.0/24` |
 | LAN local | `192.168.1.0/24` | nodo `.56`, MetalLB pool `192.168.1.240-250` |
 | Pod CIDR (Calico) | `10.244.0.0/16` | vxlan |
@@ -34,9 +36,10 @@ tráfico entre workers se enruta por el PC.
 1. **PC→EC2 (validado, principal).** La IP pública del EC2 es dinámica; el PC
    fija el endpoint del peer: `wg set aws-workers peer <pub> endpoint
    <ip-publica-ec2>:51820 persistent-keepalive 25`. Lo hace
-   `scripts/wg-sync-ec2-endpoints.sh`, invocado por Terraform en cada apply
-   (`null_resource.wg_sync`) y por el demand-gateway en cada wake
-   (`DEMAND_GATEWAY_SYNC_COMMAND`). Funciona **detrás de NAT/CGNAT** porque el PC
+   `scripts/wg-sync-ec2-endpoints.sh` (cubre AMBOS pools, incluido el peer GPU
+   `worker-21`), invocado por Terraform en cada apply (`null_resource.wg_sync`),
+   por el demand-gateway en cada wake (`DEMAND_GATEWAY_SYNC_COMMAND`), y a mano
+   tras cada `start-instances` de la g6. Funciona **detrás de NAT/CGNAT** porque el PC
    inicia saliente. Requiere `sudoers` NOPASSWD para `wg` (`/etc/sudoers.d/aws-side-wg`).
 2. **EC2→PC (secundario).** El EC2 resuelve `aws-vpc-wg.underpassai.com` en una
    zona Route53 **privada** (VPC-scoped, `terraform/dns.tf`) → `203.0.113.10:51820`
@@ -56,7 +59,7 @@ Lado **EC2** (peer = PC), de `local_cluster_allowed_cidrs` (horneado en cloud-in
 | `10.244.0.0/16` | Pod CIDR |
 | `192.168.1.240/28` | VIPs MetalLB de la LAN |
 
-Lado **PC** (peer = worker-N): solo `10.90.0.(10+N)/32` (la IP WG del worker).
+Lado **PC** (un peer por worker): solo la IP WG de ese worker — `10.90.0.(10+N)/32` para el pool generico, `10.90.0.(20+N)/32` para el pool GPU.
 
 ## El PC como hub: forward + NAT
 
@@ -91,6 +94,6 @@ Aviso: `ufw reload` flushea la cadena FORWARD; re-ejecutar el service
 | VPC/SG/EC2/IAM/S3, wg del EC2, AllowedIPs, join, node-name, labels | `terraform/` (cloud-init) |
 | Token bootstrap + wg-sync + espera Ready | `terraform/join.tf` (ver `docs/terraform-join.md`) |
 | Zona Route53 privada del endpoint | `terraform/dns.tf` |
-| wg del PC (claves, peers) | `scripts/generate-worker-secrets.sh` → `/etc/wireguard/aws-workers.conf` |
+| wg del PC (claves, peers) | `scripts/generate-worker-secrets.sh <n-genericos> <n-gpu>` → `/etc/wireguard/aws-workers.conf` |
 | forward/NAT del PC (persistente) | `scripts/setup-pc-network.sh` + `systemd/aws-side-pc-net.service` |
 | sudoers NOPASSWD `wg` | `sudoers.d/aws-side-wg` → `/etc/sudoers.d/aws-side-wg` |

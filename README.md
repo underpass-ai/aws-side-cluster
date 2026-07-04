@@ -1,48 +1,52 @@
 # AWS side cluster POC
 
-POC para extender un cluster Kubernetes local con workers baratos en AWS EC2. El control-plane queda en la workstation local y los nodos EC2 se conectan por WireGuard. La primera fase ya valida que Kubernetes sigue funcionando con nodos externos y que se pueden arrancar/parar workers por tags.
+POC para extender un cluster Kubernetes local con workers en AWS EC2. El control-plane queda en la workstation local (con 4 GPUs sirviendo LLMs) y los nodos EC2 se conectan por WireGuard. Tres fases validadas end-to-end: red y lifecycle de workers (fase 1), worker GPU con vLLM en la nube (fase 2), y ceremonias multimodelo hibridas local+AWS con observabilidad completa (fase 3).
 
 ## Estado Validado
 
-Fecha de validacion: 2026-06-25 (fase 1). 2026-06-26: wake rootless, join orquestado en Terraform, reachability MetalLB, worker<->worker y DNS privado validados con `scripts/cluster-test.sh`.
+Hitos: 2026-06-25 fase 1 (red/workers/gateway) · 2026-06-26 wake rootless, join en Terraform, reachability MetalLB, DNS privado (`scripts/cluster-test.sh`) · 2026-06-28 4 vLLM en las GPUs locales · 2026-07-02 worker GPU x86/L4 validado (el T4G/arm64 resulto inviable: torch cu130 requiere sm_80+) · 2026-07-03 ceremonias multimodelo hibridas + time-slicing (2 modelos en la L4) + observabilidad (Prometheus/Tempo/Loki) + auto-stop por idle verificado.
 
-- Control-plane local: `wrx80-node1`, `192.168.1.56`
-- Workers AWS: `aws-worker-1` (WG `10.90.0.11`) y `aws-worker-2` (WG `10.90.0.12`). Nombre de nodo estable; el ID de instancia EC2 cambia en cada replace.
-- WireGuard local: `aws-workers`, local `10.90.0.1`
-- VPC: `vpc-0ece93c68a3d23f84`, CIDR `10.80.0.0/16`
-- Public subnet: `subnet-06e142a3f3d96f502`, CIDR `10.80.1.0/24`
-- Security group: `sg-095550d47f14a04f2`
-- S3 bootstrap bucket: `aws-side-poc-bootstrap-5d7cbe73`
-- S3 bootstrap object: `bootstrap/random-payload.zip`
-- EC2 role policy final: solo `aws-side-poc-bootstrap-s3`
-- Smoke test validado: pod `registry.k8s.io/pause:3.10` planificado en worker AWS y borrado.
+- Control-plane local: `wrx80-node1`, `192.168.1.56`, cri-o, 4x RTX 3090 (4 vLLM: qwen3-coder, devstral, gemma4, ernie45-thinking).
+- Workers AWS genericos: `aws-worker-1` (WG `10.90.0.11`) y `aws-worker-2` (WG `10.90.0.12`), `t3.micro`, containerd. Nombre de nodo estable; el ID de instancia cambia en cada replace.
+- Worker GPU AWS: `aws-gpu-worker-1` (WG `10.90.0.21`), `g6.xlarge` (NVIDIA L4 24GB), cri-o 1.35.2, 2 vLLM via time-slicing (phi4-mini + smollm3).
+- WireGuard local: `aws-workers`, local `10.90.0.1`. Tras cada stop/start de EC2: `scripts/wg-sync-ec2-endpoints.sh` (la IP publica cambia).
+- VPC: `vpc-0ece93c68a3d23f84`, CIDR `10.80.0.0/16`; subnet publica `subnet-06e142a3f3d96f502` (`10.80.1.0/24`); SG `sg-095550d47f14a04f2`.
+- S3: `aws-side-poc-bootstrap-5d7cbe73` — ZIP de bootstrap, pesos de modelos (`models/*.tar`, GLACIER_IR) y logs de bootstrap de cada nodo (`logs/<hostname>-bootstrap.log`, diagnostico sin SSM/SSH).
+- IAM del rol EC2: `aws-side-poc-bootstrap-s3` (bootstrap + models) mas drift consciente documentado: `AmazonSSMManagedInstanceCore` (ops, attacheada por CLI) e inline `s3-node-logs` (shipper de logs). Ver "IAM" en `docs/article-base.md`.
 - Servicio de prueba AWS: `underpass-labs/aws-echo`, MetalLB `192.168.1.242`.
-- Gateway de demanda POC: `underpass-labs/aws-demand-gateway`, MetalLB `192.168.1.243`.
+- Gateway de demanda POC: `underpass-labs/aws-demand-gateway`, MetalLB `192.168.1.243`. Auto-stop por idle (300s) verificado — SOLO cubre los t3.micro; el nodo GPU se arranca/para a mano.
+- LLM serving: `llm-gateway` (proxy OpenAI-compatible label-driven) + choreographer (ceremonias multimodelo; actas reales en `choreographer/runs/`).
 
 ## Arquitectura
 
 ```text
              LAN local
-    +-------------------------+
-    | wrx80-node1             |
-    | Kubernetes control-plane |
-    | API 192.168.1.56:6443   |
-    | WG  10.90.0.1           |
-    | MetalLB / ingress local |
-    +-----------+-------------+
-                |
-                | WireGuard sobre Internet
-                |
-        +-------+-------------------+
-        | AWS VPC 10.80.0.0/16      |
-        | subnet publica 10.80.1.0  |
-        |                           |
-        | EC2 worker 10.90.0.11     |
-        | EC2 worker 10.90.0.12     |
-        +---------------------------+
+    +----------------------------------+
+    | wrx80-node1 (cri-o)              |
+    | Kubernetes control-plane         |
+    | API 192.168.1.56:6443            |
+    | WG  10.90.0.1                    |
+    | 4x RTX 3090 -> 4 vLLM            |
+    | choreographer + llm-gateway      |
+    | MetalLB / ingress local          |
+    | Prometheus + Tempo + Loki        |
+    +---------------+------------------+
+                    |
+                    | WireGuard sobre Internet (estrella)
+                    |
+        +-----------+------------------------------+
+        | AWS VPC 10.80.0.0/16, eu-south-2         |
+        | subnet publica 10.80.1.0/24              |
+        |                                          |
+        | aws-worker-1     t3.micro    10.90.0.11  |
+        | aws-worker-2     t3.micro    10.90.0.12  |
+        | aws-gpu-worker-1 g6.xlarge   10.90.0.21  |
+        |   NVIDIA L4 24GB (time-sliced x2)        |
+        |   vllm-phi4-aws + vllm-smollm3-aws       |
+        +------------------------------------------+
 ```
 
-El plano de control no se mueve a AWS. AWS aporta capacidad elastica de workers. En esta POC son `t4g.micro`; en fase 2 la misma idea se reutilizara con nodos GPU para inferencia.
+El plano de control no se mueve a AWS. AWS aporta capacidad elastica: workers genericos `t3.micro` (originalmente `t4g.micro` arm64; homogeneizados a x86 con la migracion GPU) y un worker GPU `g6.xlarge` que entra y sale del pool de modelos automaticamente (health-check del llm-gateway) al arrancarlo/pararlo.
 
 ## Componentes
 
@@ -61,20 +65,30 @@ El plano de control no se mueve a AWS. AWS aporta capacidad elastica de workers.
 - `scripts/cluster-test.sh`: smoke test integral (cold-start + cadena completa).
 - `terraform/join.tf`: token bootstrap + join + wg-sync orquestados. Ver `docs/terraform-join.md`.
 - `terraform/dns.tf`: zona Route53 privada para el endpoint WireGuard EC2->PC.
+- `charts/local-llm/`: N modelos vLLM OpenAI-compatible, 1 GPU (o slot time-sliced) por modelo, labels `underpass.ai/llm-role`, ServiceMonitor Prometheus. `values.yaml` = 4 grandes locales; `values-aws-gpu.yaml` = 2 pequenos en la L4 (release separado `aws-gpu-llm`).
+- `charts/llm-gateway/`: reverse proxy OpenAI-compatible que descubre los vLLM por label y enruta por nombre exacto o alias `role:<rol>` (round-robin + health-check). Los nodos parados salen solos del pool.
+- `choreographer/`: values de despliegue del motor de ceremonias publico, ceremonias (`ceremonies/`) y actas de corridas reales (`runs/`). Ver `choreographer/README.md`.
+- `scripts/install-local-llm.sh`: instalador de los releases de modelos (`big`/`small`/`all`/`uninstall`).
+
+Documentacion:
+
 - `docs/network-topology.md`: topologia de red completa (estrella, AllowedIPs, NAT, DNS).
-- `docs/terraform-join.md`: join orquestado en Terraform.
-- `docs/calico-recovery.md`: rollback/preflight del cambio de Calico.
+- `docs/network-planes.md`: separacion del plano web y el plano de transporte WireGuard.
+- `docs/terraform-join.md`: join orquestado en Terraform (ambos pools).
+- `docs/calico-recovery.md`: rollback/preflight de Calico + modos de fallo de typha.
 - `docs/demand-gateway.md`: uso y limitaciones del gateway de demanda.
 - `docs/per-node-demand-test.md`: prueba de routing por tag/nodo.
-- `docs/article-base.md`: notas base para el articulo.
+- `docs/link-debug-logs.md`: forense historico del debug del enlace WG (resuelto).
+- `docs/article-base.md`: base de la serie de articulos (3 piezas, con los hitos fechados).
 
 ## Decisiones De Diseno
 
 - Red barata: WireGuard, sin VPN Gateway ni VPC peering.
 - Sin SSH por defecto: `allowed_ssh_cidrs = []`.
-- IAM minimo en EC2: solo lectura/restore del objeto ZIP de S3.
-- Public IPv4 dinamica: no usamos Elastic IP para evitar coste idle.
-- `t4g.micro`: minimo practico para kubeadm worker. `t4g.nano` es mas barata pero demasiado justa para kubelet/containerd.
+- IAM minimo como objetivo, con drift consciente: la base es lectura/restore del bootstrap y `models/*`; se sumaron SSM (ops) y escritura `logs/*` (shipper), acotados y documentados como deuda.
+- Public IPv4 dinamica: no usamos Elastic IP para evitar coste idle. A cambio, `wg-sync-ec2-endpoints.sh` obligatorio tras cada stop/start.
+- `t4g.micro` fue el minimo practico arm64 de fase 1; el pool actual es `t3.micro` x86 (homogeneizado al migrar la GPU: la unica GPU arm64 en la region, T4G/sm_75, es inviable con torch cu130).
+- GPU cloud `g6.xlarge` (L4) con imagen oficial vLLM multi-arch, cri-o homogeneo con el nodo local (el GPU Operator solo soporta UN modo de toolkit cluster-wide; runtimes mixtos causaron el incidente typha).
 - Bootstrap idempotente: el ZIP S3 se descarga una sola vez y deja marker en el home del usuario.
 
 ## Prerrequisitos Locales
@@ -116,7 +130,7 @@ Detalle en `docs/calico-recovery.md`.
 Generar claves:
 
 ```bash
-scripts/generate-worker-secrets.sh 2
+scripts/generate-worker-secrets.sh 2 1   # 2 workers genericos + 1 GPU (peer .21)
 ```
 
 Esto crea:
@@ -197,7 +211,7 @@ Terraform/OpenTofu crea:
 - Security group con salida abierta, WireGuard UDP 51820 y SSH solo si se configura.
 - IAM role/profile con permisos S3 minimos.
 - S3 privado con ZIP random en `bootstrap/random-payload.zip`.
-- Dos EC2 `t4g.micro` con Amazon Linux 2023.
+- Dos EC2 `t3.micro` con Amazon Linux 2023 (pool generico) y, con `gpu_instance_count=1`, una `g6.xlarge` (pool GPU: driver NVIDIA, cri-o, descarga de modelos de S3).
 
 ## Operacion Del Pool
 
@@ -270,9 +284,9 @@ kubectl delete pod aws-worker-smoke
 
 Resultado esperado:
 
-- 3 nodos `Ready`.
-- `calico-node` `1/1` en los 3 nodos.
-- El smoke pod corre en un nodo `ip-10-80-1-*.eu-south-2.compute.internal`.
+- Todos los nodos arrancados `Ready` (4 con todo encendido: wrx80-node1, aws-worker-1/2, aws-gpu-worker-1).
+- `calico-node` `1/1` en cada nodo Ready.
+- El smoke pod corre en un nodo `aws-worker-N` (node-names estables desde 2026-06-26).
 
 ## Servicio De Prueba
 
@@ -386,6 +400,37 @@ Ese nombre es solo para red WireGuard/VPC. No debe apuntar a la web publica salv
 
 Las EC2 existentes no reejecutan `user_data` al cambiar ese valor. Si el endpoint se anade despues de crear workers, hay que reemplazarlos para validar arranque frio real.
 
+## Operacion Del Worker GPU
+
+El nodo GPU no esta gestionado por el demand-gateway (sin auto-stop por idle): se arranca y para a mano. La capacity de g6 en eu-south-2a es escasa — reintentar el start cada ~90s.
+
+```bash
+# levantar
+aws ec2 start-instances --instance-ids <g6>          # reintentar si falla por capacity
+scripts/wg-sync-ec2-endpoints.sh                      # IP publica nueva en cada start
+kubectl -n underpass-labs get pods -l app.kubernetes.io/part-of=local-llm -w
+# los 2 vLLM de la L4 (phi4, smollm3) llegan a 1/1 solos; el llm-gateway los re-incluye por health-check
+
+# parar (compute a 0; queda el EBS de 100GB)
+aws ec2 stop-instances --instance-ids <g6>
+```
+
+La L4 (24GB) sirve 2 modelos via time-slicing del GPU Operator: perfil `l4-slice-2` en el ConfigMap `time-slicing-config` (ns `nvidia`) + label `nvidia.com/device-plugin.config=l4-slice-2` en el nodo. Ojo: con time-slicing activo GFD renombra el producto a `NVIDIA-L4-SHARED` (el nodeSelector del chart ya lo refleja). Logs de bootstrap de cualquier nodo, sin SSM/SSH y con la instancia parada:
+
+```bash
+aws s3 cp s3://aws-side-poc-bootstrap-5d7cbe73/logs/<hostname>-bootstrap.log -
+```
+
+## Observabilidad
+
+Cableada al stack existente del cluster (ns `monitoring`):
+
+- **Prometheus**: ServiceMonitor `vllm-local-llm` (chart `local-llm`, activado solo en el release local — cubre los 6 vLLM del ns) → series `vllm:*` (KV cache, tokens/s, TTFT).
+- **Tempo**: el choreographer exporta trazas OTLP (`CHOREO_OTLP_ENDPOINT` en `choreographer/values.underpass-labs-public.yaml`) — cada ceremonia es una traza distribuida (`rpc.run_ceremony` → `deliberate`, con span events de cada critica/revision).
+- **Loki**: promtail en los 4 nodos; la linea temporal de una ceremonia y el conteo de intervenciones son queries LogQL (`proposal drafted`, `peer critique and revision`).
+
+Runbooks upstream (PRs #115-117 de `underpass-ai/underpass-choreographer`): NOTES del chart que avisa si falta el OTLP, runbook de observabilidad y runbook de autoria de ceremonias.
+
 ## S3 Y Glacier
 
 La instancia usa AWS CLI dentro de EC2 con Instance Profile. En el primer arranque descarga el ZIP al home de `ec2-user`.
@@ -406,11 +451,12 @@ Tiers:
 
 ## Coste Aproximado
 
-Con 2 workers parados casi todo el mes, el coste base es principalmente EBS:
+Con todo parado, el coste base es EBS:
 
-- 2 x 8 GB gp3 ~= 1.41 USD/mes
+- 2 x 8 GB gp3 (t3.micro) ~= 1.41 USD/mes
+- 1 x 100 GB gp3 (g6, driver + imagen vLLM + modelos) ~= 8 USD/mes — domina el coste base
 
-Encendidos, pagan EC2 + IPv4 publica dinamica por horas. La IPv4 publica se libera al parar la instancia.
+Encendidas, pagan EC2 + IPv4 publica dinamica por horas (g6.xlarge ~0.50 USD/h on-demand). La IPv4 se libera al parar. Los pesos de modelos viven en S3 GLACIER_IR (`models/*.tar`) para poder recrear la g6 desde cero sin re-descargar de HF.
 
 ## Problemas Resueltos
 
@@ -426,7 +472,19 @@ Encendidos, pagan EC2 + IPv4 publica dinamica por horas. La IPv4 publica se libe
 - Sin trafico worker<->worker (malla en estrella): `10.90.0.0/24` en AllowedIPs + hairpin forward en el PC.
 - Token kubeadm manual y caducaba a 24h: ahora lo genera Terraform (provider `kubernetes`). Ver `docs/terraform-join.md`.
 - Endpoint `aws-vpc-wg` creado por error en la zona publica (casi rompe la web): movido a zona Route53 PRIVADA (`terraform/dns.tf`).
+- (fase 2) vLLM en T4G/arm64 inviable: torch cu130 recorta a sm_80+ y recompilar vLLM no salva (el limite es el wheel de torch) → migracion a x86 g6/L4 con imagen oficial.
+- (fase 2) GPU Operator con runtimes mixtos revirtio la config cri-o local (drift latente que exploto en el siguiente reboot) → cri-o homogeneo en ambos nodos GPU + handler nvidia host-managed + `runtimeClassName` explicito.
+- (fase 2) Cambiar `default_runtime` de cri-o con contenedores vivos dejo un typha huerfano reteniendo el puerto 5473 (estado de crun por-runtime-root) → tras tocar runtime, reciclar pods hostNetwork. Ver `docs/calico-recovery.md`.
+- (fase 3) 2 modelos en una L4 de 24GB: time-slicing del device plugin + reparto asimetrico de VRAM (0.50/0.40, 8k contexto, enforce-eager) — 0.45/0.45 con 16k no cabe.
 
-## Siguiente Fase
+## Estado Y Siguiente Iteracion
 
-Fase 1 ya valida red, worker lifecycle, servicio en workers AWS y un primer gateway HTTP de demanda. Lo siguiente es configurar el endpoint WireGuard local, probar el ciclo completo con workers parados y anadir TLS/mTLS en ingress. En fase 2, el mismo patron se aplicara a nodos GPU para colas o servicios de inferencia especializados.
+Las 3 fases estan validadas: red y lifecycle (1), GPU cloud con vLLM (2), ceremonias multimodelo hibridas con observabilidad (3). Actas reales en `choreographer/runs/`; la base editorial de la serie en `docs/article-base.md`.
+
+Candidatos para la siguiente iteracion:
+
+- Reaper GPU: auto-stop de la g6 basado en metricas vLLM de Prometheus (`vllm:num_requests_running == 0` sostenido), analogo al idle de los t3 pero midiendo uso real de inferencia.
+- Correr la ceremonia editorial `choreographer/ceremonies/article-decision-traces-hybrid.yaml` (lista, sin estrenar).
+- Codificar en Terraform el drift IAM (SSM + `s3-node-logs`) o retirarlo.
+- TLS/mTLS en el ingress de demanda; rotacion del token bootstrap TF.
+- Redactar las piezas de la serie (ver `docs/article-base.md`).

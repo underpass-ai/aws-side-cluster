@@ -6,9 +6,16 @@ No es todavia un operador Kubernetes. Es un proceso local en el control-plane qu
 
 1. recibe HTTP,
 2. comprueba si el servicio objetivo tiene workers AWS listos,
-3. si no hay capacidad, ejecuta `scripts/ec2-pool.sh scale 2`,
+3. si no hay capacidad, arranca las EC2 del perfil (`scale-tag` por tag; el
+   perfil default sin tag usa `scale 2`),
 4. espera a que nodos y endpoints esten listos,
 5. proxya la peticion al servicio real.
+
+**Alcance: SOLO el pool generico (t3.micro).** El worker GPU
+(`aws-gpu-worker-1`, g6/L4) NO tiene perfil en el gateway: ni wake ni auto-stop
+por idle — se arranca y para a mano (ver "Operacion Del Worker GPU" en el
+README raiz). Ademas el reaper mide **HTTP a traves de ESTE gateway**: el
+trafico LLM del `llm-gateway` in-cluster (ceremonias, vLLM) le es invisible.
 
 ## Flujo Por Defecto
 
@@ -40,7 +47,8 @@ helm upgrade --install underpass-labs charts/underpass-labs \
 
 ## Ejecutar En Primer Plano
 
-Con apagado automatico desactivado:
+(El idle por perfil del ConfigMap aplica igual en foreground; lo que tiene
+`idle_seconds: 0` es el perfil default sin tag.)
 
 ```bash
 AWS_REGION=eu-south-2 scripts/demand-gateway.py \
@@ -122,6 +130,10 @@ El gateway actualiza `last_request_at` solo en `/wake` y en llamadas proxied al 
 scripts/ec2-pool.sh scale-tag aws-side:index <n> 0
 ```
 
+**Verificado e2e 2026-07-03**: worker-1 despertado via `/worker-1/wake` a las
+19:14:18, sin trafico posterior → `stopping` detectado a las 19:20:01 (clavado
+a los 300s de idle + tick del reaper).
+
 ## Permisos
 
 Para levantar desde frio, el proceso necesita:
@@ -162,8 +174,12 @@ El chart ya declara una entrada HTTPS interna sin cambiar el modelo de activacio
 
 - El primer request puede tardar minutos si los workers estan parados.
 - Si el cliente no tolera ese tiempo, usar `/wake` y luego llamar al servicio real cuando este listo.
-- No observa metricas todavia; solo reacciona a HTTP.
+- No observa metricas todavia; solo reacciona a HTTP. (Desde 2026-07-03 existen
+  metricas vLLM en Prometheus — la via natural para un futuro reaper del nodo
+  GPU basado en uso real de inferencia, p.ej. `vllm:num_requests_running == 0`
+  sostenido.)
 - El apagado por idle es por perfil y se configura en Helm con `idleSeconds`.
+- El pool GPU queda fuera del gateway (sin perfil): arranque/parada manual.
 - Para arranque desde frio completo, `local_wireguard_endpoint` debe apuntar a un UDP/51820 alcanzable desde AWS.
 - Si el DNS de `local_wireguard_endpoint` apunta a una web o a otro borde de red, ese borde debe reenviar `UDP/51820` hasta la workstation o actuar como relay WireGuard.
 - Si `local_wireguard_endpoint` se configura despues de crear las EC2, las instancias deben reemplazarse para recoger la nueva configuracion de arranque.

@@ -1,6 +1,6 @@
 # Network Planes
 
-Fecha: 2026-06-25
+Fecha: 2026-06-25 (revisado 2026-07-03: contenido vigente sin cambios)
 
 ## Separacion De Nombres
 

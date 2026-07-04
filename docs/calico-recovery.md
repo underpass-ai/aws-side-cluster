@@ -112,7 +112,12 @@ Expected:
 - Calico pods are `Running` and `calico-node` is `1/1` on each active node
 - ingress still exposes `192.168.1.241`
 
-## Notes From AWS Worker Join
+## Notes From AWS Worker Join (historico, pre 2026-06-26)
+
+> Desde los node-names estables (`--node-name aws-worker-N` en cloud-init,
+> 2026-06-26) el replace reutiliza el mismo nombre de nodo y este escenario ya
+> no ocurre en el flujo normal. Aplica solo a nodos anteriores a esa fecha o a
+> renombrados de pool.
 
 If EC2 workers are replaced, stale Kubernetes node objects may remain `NotReady` with the same WireGuard IPs. Delete stale nodes to avoid Calico IP conflicts:
 
@@ -125,3 +130,31 @@ If a new `calico-node` reports that an old node is already using `10.90.0.11` or
 ```bash
 kubectl -n calico-system delete pod <calico-node-pod>
 ```
+
+## Modos De Fallo De Typha (verificados 2026-07-02/03)
+
+Dos fallos reales de Calico sufridos y resueltos en este cluster; ninguno lo
+cubre el runbook de arriba:
+
+**1. Typhas "Running" stale en nodos AWS parados.** Al parar las EC2, sus pods
+typha siguen figurando `Running` (estado stale del kubelet muerto). Si los N
+replicas de typha caen todos en nodos parados, no hay typha vivo y
+`calico-node` del nodo local queda `0/1` (felix aguanta con el ultimo estado,
+pero no converge nada nuevo). Remediacion verificada:
+
+```bash
+kubectl -n calico-system delete pod <typhas-en-nodos-parados> --force --grace-period=0
+# el ReplicaSet reprograma typha en un nodo vivo (wrx80) y calico-node vuelve a 1/1
+```
+
+**2. Contenedor typha huerfano reteniendo el puerto 5473.** Causa: cambiar
+`default_runtime` de cri-o (p.ej. el toolkit del GPU Operator al flipar de
+modo) con contenedores vivos. El estado de crun es por-runtime-root: el kill
+del contenedor viejo delega en el runtime nuevo → "container does not exist" →
+el proceso sobrevive reteniendo `:5473` (hostNetwork) → cada typha nuevo
+crashea con `bind: address already in use` (cientos de restarts). Remediacion:
+identificar el PID por cgroup (`ss -tlnpe` muestra `crio-<id>`), `sudo kill -9`,
+force-delete del pod. Prevencion: tras tocar runtime/config de cri-o,
+`systemctl restart crio` y **reciclar los pods hostNetwork** (typha), vigilando
+"Killing container ... failed" en el journal. Cronologia completa del incidente
+en `choreographer/runs/csi-typha-1.md` (seccion de puntuacion).

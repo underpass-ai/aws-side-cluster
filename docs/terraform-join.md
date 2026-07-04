@@ -2,8 +2,9 @@
 
 Antes el join era manual: `kubeadm token create` a mano + pegar en
 `terraform.tfvars` (caduca a 24h), y un `wg-sync` manual tras `apply`. Ahora
-**`tofu apply` deja los nodos `aws-worker-N` Ready por sí solo**, sin pasos
-manuales. Definido en `terraform/join.tf`.
+**`tofu apply` deja los nodos Ready por sí solo** — ambos pools:
+`aws-worker-N` (genérico, t3.micro/containerd) y `aws-gpu-worker-N` (GPU,
+g6.xlarge/cri-o). Definido en `terraform/join.tf`.
 
 ## Piezas
 
@@ -30,8 +31,10 @@ manuales. Definido en `terraform/join.tf`.
   reemplazar → se acumulaban nodos stale; ver `docs/calico-recovery.md`).
 - **wg-sync + espera** (`null_resource.wg_sync` → `scripts/wg-sync-and-wait.sh`):
   tras crear/cambiar instancias, fija los endpoints PC→EC2 (`sudo wg`, NOPASSWD)
-  en bucle y espera a que `EXPECT_READY` (= `instance_count`) nodos del pool
-  lleguen a Ready. Tolerante si el pool está parado (sale en éxito).
+  en bucle y espera Ready. El script es **pool-agnóstico**: cuenta las EC2
+  arrancadas de ambos pools y espera nodos `aws-worker-*` Y `aws-gpu-worker-*`
+  (`WAIT_SECONDS` default 1200 — el bootstrap GPU incluye driver DKMS + reboot).
+  Tolerante si el pool está parado (sale en éxito).
 - **`ignore_changes = [associate_public_ip_address]`**: la subnet ya hace
   `map_public_ip_on_launch=true`; el atributo a nivel de instancia se lee como
   `false` en el state → sin esto, cada plan querría reemplazar las instancias.
@@ -48,10 +51,26 @@ Reemplazo (cambió user_data, secretos WireGuard, AllowedIPs):
 ```bash
 tofu -chdir=terraform apply \
   -replace='aws_instance.worker[0]' -replace='aws_instance.worker[1]'
+# pool GPU:
+tofu -chdir=terraform apply -replace='aws_instance.gpu_worker[0]'
 ```
 
 Validado: el apply crea el `Secret`, arranca los EC2, sincroniza WireGuard, y
-espera `ready=2/2` antes de `Apply complete!`. Cero pasos manuales.
+espera Ready antes de `Apply complete!`. Cero pasos manuales.
+
+## Pool GPU (`aws_instance.gpu_worker`)
+
+Mismo mecanismo de join con particularidades propias (todas en el cloud-init
+del pool GPU): `gpu_instance_count` lo crea/destruye; node-name
+`aws-gpu-worker-N`, WG `.2N`, label `underpass.ai/node-pool=aws-gpu`; bootstrap
+con bundle estático cri-o 1.35.2 + `iptables-nft` + driver NVIDIA
+(`kernel6.12-devel`, DKMS, reboot) + join con `--cri-socket`; descarga los
+`.tar` de modelos de S3 a `/opt/llm-models`; y shippea su log de bootstrap a
+`s3://aws-side-poc-bootstrap-*/logs/<hostname>-bootstrap.log` cada 15s
+(diagnóstico sin SSM/SSH, incluso con la instancia parada). Tras recrear desde
+cero, si el stack del GPU Operator no converge: borrar los pods
+`nvidia-operator-validator`/`device-plugin`/`gfd`/`nfd-worker` del nodo (los
+regenera el DaemonSet).
 
 ## Nota operativa importante
 

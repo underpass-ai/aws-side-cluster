@@ -117,7 +117,7 @@ i-07c16d62cc647716e  worker-1  stopped
 i-03a32b16cf85bdfab  worker-2  stopped
 ```
 
-## Siguiente Accion
+## Siguiente Accion (historico — NO aplicar; ver banner de cabecera)
 
 Configurar uno de estos caminos:
 

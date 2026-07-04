@@ -3,7 +3,7 @@
 **El experimento curioso**: un post-mortem *whodunit*. Al panel de 6 modelos se le dio la
 evidencia CRUDA del journal del incidente real del typha fantasma (2026-07-02, wrx80-node1)
 **sin la conclusión**, y tuvo que deducir la causa raíz. La causa verificada existe
-(HANDOFF/memoria), así que el veredicto se puede puntuar.
+(ver §Puntuación abajo, verificada por journal el 2026-07-02), así que el veredicto se puede puntuar.
 
 **Novedad de infraestructura**: 2 modelos en la MISMA L4 de 24GB (g6.xlarge) via
 **time-slicing** del GPU Operator (`nvidia.com/gpu` replicas=2 solo en `aws-gpu-worker-1`,

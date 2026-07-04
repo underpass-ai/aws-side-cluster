@@ -30,14 +30,13 @@ Para `worker-2` se repite el mismo patron con `aws-side:index=2`.
 
 ## Despliegue
 
-Los workers actuales se etiquetaron asi:
+> Historico: el etiquetado manual sobre node-names `ip-10-80-1-*` era de antes
+> de los node-names estables (2026-06-26). Hoy los nodos se llaman
+> `aws-worker-N` y el label lo pone Terraform/cloud-init en el join — sin paso
+> manual. Este patron por identidad cubre SOLO el pool generico; el pool GPU
+> (`aws-gpu-worker-N`, `node-pool=aws-gpu`) no tiene perfil en el gateway.
 
-```bash
-kubectl label node ip-10-80-1-235.eu-south-2.compute.internal underpass.ai/worker-index=1 --overwrite
-kubectl label node ip-10-80-1-72.eu-south-2.compute.internal underpass.ai/worker-index=2 --overwrite
-```
-
-Para workers nuevos, Terraform deja preparado el label en el `kubeadm join` y los tags AWS:
+Terraform deja preparado el label en el `kubeadm join` y los tags AWS:
 
 - `underpass.ai/worker-index=<n>`
 - `underpass.ai/node-pool=aws-poc`

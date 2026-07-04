@@ -1,72 +1,112 @@
 # Choreographer en el POC (`underpass-labs`)
 
-Integra el **Choreographer** (orquestador multi-agente, repo `underpass-orchestrator`) en el namespace
-del POC `underpass-labs`, usando como agentes los **4 vLLM locales** del chart `charts/local-llm`.
+Integra el **Choreographer** público ([github.com/underpass-ai/underpass-choreographer](https://github.com/underpass-ai/underpass-choreographer))
+en el namespace del POC `underpass-labs`, usando como agentes los **6 vLLM** del POC:
+4 locales (chart `charts/local-llm`, 4× RTX 3090) + 2 en la L4 del worker AWS
+(release `aws-gpu-llm`, time-slicing).
 
 El Choreographer NO es un router que construyamos aquí: es el plano de coordinación que corre
 **councils** (propose → critique → revise → validate → score → winner) y **ceremonies** (FSM YAML).
-Aquí solo (a) lo desplegamos en `underpass-labs` y (b) le damos una ceremonia que delibera sobre los
-4 modelos del POC.
+Aquí (a) lo desplegamos, (b) lo conectamos al `llm-gateway`, y (c) le damos ceremonias.
 
-## Ceremonia: `ceremonies/article-decision-traces.yaml`
+## Cómo llegan los modelos: el llm-gateway (NO endpoints por step)
 
-Planifica el artículo sobre las *decision traces* del Choreographer. Auto-referencial: la corrida
-de la ceremonia ES una decision trace que puede ir dentro del propio artículo.
+El provider base de los agentes `kind=vllm` es el **llm-gateway**
+(`CHOREO_VLLM_ENDPOINT=http://llm-gateway:8000`, chart `charts/llm-gateway`),
+que descubre los vLLM por la label `underpass.ai/llm-role` de sus Services. Los
+steps eligen modelo con `provider.model`:
 
-Flujo `FRAMING → DRAFTING → CRITIQUE → SYNTHESIS → SEALED`, un step por estado, cada uno con una
-**specialty distinta → un modelo distinto** (auto-prepare crea un council por specialty):
+- **nombre exacto** (`"phi4-mini-aws"`, `"ernie-4.5-21b-a3b"`) → ese modelo, fijo;
+- **alias `role:<rol>`** (`"role:coding"`) → round-robin entre los modelos del rol,
+  **resuelto POR LLAMADA**: en un council multi-ronda, la crítica puede venir de un
+  modelo distinto del que redactó (mezcla real de modelos — verificado en
+  `csi-typha-appeal`). Roles actuales: `coding` (qwen3-coder, devstral),
+  `general` (gemma4, phi4-aws), `reasoning` (ernie45), `junior` (smollm3-aws).
 
-| Step | Rol | specialty | Modelo (Service en `underpass-labs`) | Deliberación |
-|---|---|---|---|---|
-| `frame_scope` | FACILITATOR | `editorial_general` | gemma-4-26b (`vllm-gemma4`) | 1 agente |
-| `draft_angles` | CONTRIBUTOR | `editorial_coding` | qwen3-coder-30b (`vllm-qwen3-coder`) | **2 agentes, 1 ronda** (la traza estrella) |
-| `critique_gaps` | REVIEWER | `editorial_reasoning` | ernie-4.5-21b-a3b (`vllm-ernie45-thinking`) | 1 agente |
-| `synthesize_outline` | EDITOR | `editorial_editor` | devstral-small-24b (`vllm-devstral`) | 1 agente |
+Los nodos parados salen solos del pool por health-check (`/backends` para debug).
+La variante RegisterAgent+CreateCouncil (abajo) queda como camino alternativo NO verificado.
 
-> **Validada contra el parser real** (`CeremonyDefinitionYaml::parse_path`, el mismo que usa
-> `RunCeremony`): pasa esquema serde + las 11 invariantes del `CeremonyDefinition`.
-> Lint estructural reproducible en `scripts/` del scratchpad o re-corre el parser con un test
-> en `crates/choreo-adapters/tests/` que llame `parse_path("…/article-decision-traces.yaml")`.
+## Despliegue (verificado 2026-07-02/03)
 
-> Prompts en inglés (convención de las ceremonias del repo). Si el artículo va en español, cámbialos.
-
-## Prerrequisitos
-
-1. Los 4 vLLM del POC corriendo en `underpass-labs` (chart `local-llm`, release `local-llm`):
-   `vllm-gemma4`, `vllm-qwen3-coder`, `vllm-ernie45-thinking`, `vllm-devstral` (todos `:8000`).
-2. Choreographer desplegado en `underpass-labs` con `values.underpass-labs.yaml` (este dir).
-   La imagen debe llevar la feature **`agent-vllm`** y el provider base `CHOREO_VLLM_*` (ya en el values).
-
-## Correr la ceremonia
-
-`RunCeremony` (gRPC) con `definition_yaml` = el fichero, y `context` con los `inputs`:
+- **Chart del checkout** del repo público (`~/ai/developents/underpass-choreographer/charts/choreographer`)
+  — el chart OCI `0.1.0` publicado está **stale** (mismo número de versión, sin `providerEnv`).
+- Imagen pinneada por digest: tag `metrics-e7a89f4` (`sha256:18abb055…`) — la única publicada
+  con `RunCeremony`; GHCR privado → requiere el secret `ghcr-pull` en el ns.
+- Values: `values.embedded-nats.yaml` (del checkout) + **`values.underpass-labs-public.yaml`**
+  (este dir; providerEnv → gateway + **OTLP → Tempo**) + `--set config.seedSpecialties=panel`.
+  (`values.underpass-labs.yaml` es el despliegue ANTIGUO pre-gateway; conservado como histórico.)
 
 ```bash
-# port-forward al gRPC del choreographer (ajusta puerto/servicio segun el chart)
-kubectl -n underpass-labs port-forward svc/choreographer 50055:50055 &
-
-grpcurl -plaintext -d @ localhost:50055 underpass.choreo.v1.ChoreographerService/RunCeremony <<JSON
-{
-  "ceremony_id": "article-trace-1",
-  "definition_yaml": $(yq -o=json -I=0 '.' ceremonies/article-decision-traces.yaml | jq -Rs .),
-  "context": { "article_brief": "Artículo: cómo el Choreographer produce decision traces auditables (councils + judge + OTEL).", "audience_notes": "Ingenieros que evalúan orquestadores de agentes." },
-  "lease_owner_id": "operator",
-  "lease_ttl_ms": 120000
-}
-JSON
+helm -n underpass-labs upgrade --install choreographer \
+  <checkout>/charts/choreographer \
+  -f <checkout>/charts/choreographer/values.embedded-nats.yaml \
+  -f choreographer/values.underpass-labs-public.yaml \
+  --set config.seedSpecialties=panel \
+  --set image.digest=sha256:18abb0556a8818ab418c34b0461ba22b5e299aff1da0cc73338a82f7e92fe016 \
+  --wait --timeout 5m
 ```
 
-La respuesta trae `steps[]` (cada uno con `role_id`, `status`, `output` = winner_content = el acta del
-step) y `mermaid_sequence`. Con `CHOREO_JUDGE_ENABLED=true` (en el values) el winner de cada step se
-elige por **calidad intrínseca** (LLM-judge), no por tie-break arbitrario — que es justo el punto del
-artículo. Con `otel` + endpoint OTLP, la corrida entera es una traza span-by-span.
+Al arrancar, el pod debe loguear `"otlp exporter wired"` — cada ceremonia queda como
+traza distribuida en Tempo (`rpc.run_ceremony` → `deliberate`, con span events de cada
+crítica/revisión). Si el banner del NOTES avisa de que falta el OTLP, revisa el overlay.
 
-## Variante: council heterogéneo (qwen3-coder + devstral en el MISMO step)
+## Ceremonias y actas
 
-El auto-prepare hace councils **homogéneos** (todos los agentes de un step comparten `provider.model`).
-Para que `draft_angles` delibere con qwen3-coder **y** devstral a la vez (disenso entre 2 modelos
-distintos = mejor traza para el artículo), pre-registra los agentes ANTES de `RunCeremony` y deja el
-step con `agent_kind: noop` (para que el throwaway no falle y prevalezca el council pre-registrado):
+| Ceremonia | Qué es | Estado |
+|---|---|---|
+| `hello-panel.yaml` | smoke noop | corrida (acta `runs/hello-panel-1.md`) |
+| `multimodel-panel.yaml` | panel 4 modelos locales por roles | corrida (`runs/multimodel-panel-1.md`) |
+| `multimodel-panel-hybrid.yaml` | + phi4 desde la L4 AWS (step `aws_perspective`) | corrida (`runs/multimodel-panel-hybrid-1.md`) |
+| `csi-typha.yaml` | whodunit forense del incidente typha, 6 modelos | corrida (`runs/csi-typha-1.md`) |
+| `csi-typha-appeal.yaml` | apelación: 2 councils × 3 rondas de peer review | corrida (`runs/csi-typha-appeal-1.md`) |
+| `article-decision-traces.yaml` | ceremonia editorial del artículo (esquema pre-gateway) | corrida 2026-06-28 (`runs/article-trace-1.md`, esquema antiguo) |
+| `article-decision-traces-hybrid.yaml` | editorial + step AWS | lint OK, **sin correr** |
+
+Las actas en `runs/` incluyen los outputs íntegros, la evidencia de routing y (en las CSI)
+la puntuación del panel contra la causa raíz verificada.
+
+## Correr una ceremonia (receta verificada)
+
+`grpcurl` no está instalado en el host: se usa **containerizado** con los protos del
+checkout de `underpass-orchestrator`. GOTCHA: el `-i` de podman es obligatorio para
+el payload por stdin (sin él: "invalid ceremony yaml" con payload vacío).
+
+```bash
+kubectl -n underpass-labs port-forward svc/choreographer 50055:50055 &
+
+jq -Rs '{ceremonyId:"mi-run-1", definitionYaml:., context:{}, leaseOwnerId:"operator", leaseTtlMs:120000}' \
+  ceremonies/<ceremonia>.yaml \
+| podman run -i --rm --network=host \
+    -v ~/ai/developents/underpass-orchestrator/crates/choreo-proto/proto:/protos:ro \
+    docker.io/fullstorydev/grpcurl -plaintext -max-time 2400 \
+    -import-path /protos -proto underpass/choreo/v1/choreo.proto -d @ \
+    localhost:50055 underpass.choreo.v1.ChoreographerService/RunCeremony
+```
+
+La respuesta trae `steps[]` (`output` = winner del step) y `mermaidSequence`. `RunCeremony`
+**bloquea** hasta el estado terminal: dimensiona el timeout del cliente al total de llamadas.
+
+## Gotchas de autoría (verificados; detalle en el runbook upstream)
+
+- **`rounds` exige `num_agents >= 2`** — con 1 agente es no-op SILENCIOSO. Con council,
+  `rounds: N` corre peer review circular (el agente *i* critica Y revisa al *i+1*, N rondas).
+- **Coste en llamadas por step**: `num_agents + rounds × num_agents × 2` (secuenciales).
+  `provider.timeout_secs` acota cada llamada, no el step.
+- **Los agentes/councils persisten por specialty** en memoria del pod: si cambias
+  `agent_kind` de un handler ya usado, reinicia el pod o usa otro handler.
+- **Modelos thinking** (smollm3, ernie): presupuesta `max_tokens` para el razonamiento
+  + la respuesta; `/no_think` de SmolLM3 solo aplica en system prompt (el provider manda user).
+- **Lint antes de correr**: test de 5 líneas con `CeremonyDefinitionYaml::parse_path` en
+  `crates/choreo-adapters/tests/` del checkout de `underpass-orchestrator` (borrar tras usar).
+- Prompts en inglés (convención del repo).
+
+Runbooks upstream (nuestras PRs): `docs/operations/observability-runbook.md` (#116) y
+`docs/operations/ceremony-authoring-runbook.md` (#117); NOTES del chart (#115).
+
+## Variante alternativa: council heterogéneo por RegisterAgent (NO verificada)
+
+Para mezclar modelos SIN gateway (endpoints directos), pre-registrar agentes antes de
+`RunCeremony` y dejar el step con `agent_kind: noop`:
 
 ```text
 RegisterAgent  specialty=editorial_coding  agent_id=agent-editorial_coding-0  kind=vllm
@@ -74,14 +114,12 @@ RegisterAgent  specialty=editorial_coding  agent_id=agent-editorial_coding-0  ki
 RegisterAgent  specialty=editorial_coding  agent_id=agent-editorial_coding-1  kind=vllm
                attrs={ provider.endpoint=http://vllm-devstral:8000,     provider.model=devstral-small-24b }
 CreateCouncil  specialty=editorial_coding  num_agents=2
-# luego RunCeremony con el step draft_angles usando agent_kind: noop, num_agents: 2, sin provider.*
 ```
 
-(Verificar en un e2e real: el comportamiento "register duplicado AlreadyExists se traga y gana el
-council pre-registrado" está inferido del código, no ejecutado.)
+(Inferido del código, nunca ejecutado. Hoy la mezcla verificada es el alias `role:<rol>`.)
 
 ## Pendiente
 
-- Labels por rol (`underpass.ai/llm-role: coding|reasoning|general`) en el chart `local-llm`
-  (metadatos de selección; el choreographer enruta por specialty, no por label k8s).
-- Script Python/FastAPI que orqueste el registro (variante heterogénea) + `RunCeremony`.
+- Correr `article-decision-traces-hybrid.yaml` (la editorial con step AWS).
+- Loguear en el llm-gateway el modelo resuelto por request (atribución exacta
+  modelo↔llamada en councils con alias de rol — hueco observable conocido).

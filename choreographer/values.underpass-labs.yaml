@@ -1,3 +1,9 @@
+# ============================================================================
+# HISTORICO (pre 2026-07-02) — NO USAR PARA DESPLEGAR.
+# El despliegue vigente es values.underpass-labs-public.yaml (chart del checkout
+# publico de underpass-ai/underpass-choreographer + llm-gateway + OTLP a Tempo).
+# Este fichero se conserva como registro del primer despliegue pre-gateway.
+# ============================================================================
 # Perfil de despliegue del Choreographer (chart upstream: underpass-orchestrator/charts/choreographer)
 # en el namespace del POC: underpass-labs. Sin runtime plane, sin mTLS/OTLP, NATS embebido,
 # providers = los 4 vLLM locales (la ceremonia auto-prepara los agentes vllm desde su YAML).
