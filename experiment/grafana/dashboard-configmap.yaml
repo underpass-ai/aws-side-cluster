@@ -65,22 +65,21 @@ data:
         },
         {
           "type": "timeseries",
-          "title": "KV-cache usage % — the two models time-slicing the L4",
+          "title": "The reviewer at work — requests served on the ephemeral L4",
           "datasource": { "type": "prometheus", "uid": "prom-mon" },
           "gridPos": { "h": 8, "w": 12, "x": 12, "y": 11 },
           "fieldConfig": {
             "defaults": {
-              "custom": { "fillOpacity": 15, "lineWidth": 1 },
-              "unit": "percent",
-              "min": 0,
-              "max": 5
+              "custom": { "fillOpacity": 30, "lineWidth": 2, "barAlignment": 0 },
+              "color": { "mode": "palette-classic" },
+              "min": 0
             },
             "overrides": []
           },
           "targets": [
             {
-              "expr": "vllm:kv_cache_usage_perc{model_name=~\"phi4-mini-aws|smollm3-aws\"}",
-              "legendFormat": "{{model_name}}",
+              "expr": "sum by (model_name) (increase(vllm:request_success_total{model_name=~\"phi4-mini-aws|smollm3-aws\"}[2m]))",
+              "legendFormat": "{{model_name}} requests (5 decisions → 5 skeptical reviews, avg 3.5s e2e)",
               "refId": "A"
             }
           ]
