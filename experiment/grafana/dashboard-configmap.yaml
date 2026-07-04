@@ -72,7 +72,8 @@ data:
             "defaults": {
               "custom": { "fillOpacity": 15, "lineWidth": 1 },
               "unit": "percent",
-              "min": 0
+              "min": 0,
+              "max": 5
             },
             "overrides": []
           },
