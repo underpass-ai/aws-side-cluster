@@ -65,7 +65,7 @@ data:
         },
         {
           "type": "timeseries",
-          "title": "The reviewer at work — requests served on the ephemeral L4",
+          "title": "The reviewer at work — 5 decisions → 5 skeptical reviews on the ephemeral L4 (avg 3.5s e2e)",
           "datasource": { "type": "prometheus", "uid": "prom-mon" },
           "gridPos": { "h": 8, "w": 12, "x": 12, "y": 11 },
           "fieldConfig": {
@@ -79,7 +79,7 @@ data:
           "targets": [
             {
               "expr": "sum by (model_name) (increase(vllm:request_success_total{model_name=~\"phi4-mini-aws|smollm3-aws\"}[2m]))",
-              "legendFormat": "{{model_name}} requests (5 decisions → 5 skeptical reviews, avg 3.5s e2e)",
+              "legendFormat": "{{model_name}} requests served",
               "refId": "A"
             }
           ]
