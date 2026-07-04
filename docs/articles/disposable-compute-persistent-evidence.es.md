@@ -287,7 +287,7 @@ medir la calidad de la evidencia.
   (apelación, 204s), ceremonias en `choreographer/runs/*.md`, reaper
   `events.log`, PRs upstream #115 (banner NOTES), #116 (runbook
   observabilidad), #117 (runbook autoría), #118 (output contract en YAML),
-  #[TBD] (grounding validator).
+  #119 (grounding validator: refs dinamicas del context via allowed_refs_from_context, fail-loud si el pack falta).
 - **Decisión pendiente**: hook A vs B (probar con 2-3 lectores).
 - **Capturas pendientes**: las 5 del §16 del diseño, todas de runs reales.
 - **Título inglés**: "I Let My AI GPU Workers Shut Down After 5 Minutes.
