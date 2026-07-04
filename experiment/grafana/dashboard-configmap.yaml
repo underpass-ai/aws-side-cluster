@@ -27,7 +27,7 @@ data:
         },
         {
           "type": "timeseries",
-          "title": "vLLM requests running on the ephemeral worker (NVIDIA L4)",
+          "title": "Token throughput on the ephemeral worker (NVIDIA L4) — tokens/s",
           "datasource": { "type": "prometheus", "uid": "prom-mon" },
           "gridPos": { "h": 8, "w": 24, "x": 0, "y": 3 },
           "fieldConfig": {
@@ -40,15 +40,15 @@ data:
           },
           "targets": [
             {
-              "expr": "sum(vllm:num_requests_running{model_name=~\"phi4-mini-aws|smollm3-aws\"}) or vector(0)",
-              "legendFormat": "requests running (L4 models)",
+              "expr": "sum(rate(vllm:generation_tokens_total{model_name=~\"phi4-mini-aws|smollm3-aws\"}[2m])) or vector(0)",
+              "legendFormat": "generated tokens/s (L4 models)",
               "refId": "A"
             }
           ]
         },
         {
           "type": "timeseries",
-          "title": "Requests running by model (whole hybrid cluster)",
+          "title": "Token throughput by model (whole hybrid cluster)",
           "datasource": { "type": "prometheus", "uid": "prom-mon" },
           "gridPos": { "h": 8, "w": 12, "x": 0, "y": 11 },
           "fieldConfig": {
@@ -57,7 +57,7 @@ data:
           },
           "targets": [
             {
-              "expr": "vllm:num_requests_running",
+              "expr": "sum by (model_name) (rate(vllm:generation_tokens_total[2m]))",
               "legendFormat": "{{model_name}}",
               "refId": "A"
             }
@@ -78,7 +78,7 @@ data:
           },
           "targets": [
             {
-              "expr": "vllm:gpu_cache_usage_perc{model_name=~\"phi4-mini-aws|smollm3-aws\"}",
+              "expr": "vllm:kv_cache_usage_perc{model_name=~\"phi4-mini-aws|smollm3-aws\"}",
               "legendFormat": "{{model_name}}",
               "refId": "A"
             }
