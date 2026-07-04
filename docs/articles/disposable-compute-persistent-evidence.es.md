@@ -147,7 +147,7 @@ Detalles que importan (y que son el 80% del trabajo real):
   con acceso inmediato) para que recrear el worker desde cero sea barato.
 
 *[CAPTURA 1 aquí: panel de arranque — instancia starting → nodo Ready →
-primer span OTEL. TBD tras las runs.]*
+primer span OTEL — datos: 13:06:24 peticion, 13:07:41 running, 13:11:30 sirviendo. Panel Prometheus del apendice.]*
 
 ## 4. El perfil de reunión: Evidence-Bound Change Review
 
@@ -171,8 +171,8 @@ decisión final: el contrato la mata antes.
 Esto no es un diseño en papel: el motor (open source) ya tenía el aparato de
 contratos de salida y el rechazo determinista (`NoValidProposal`); lo que
 faltaba era poder declararlo en el YAML de la ceremonia y el validator de
-grounding. Son las dos PRs que abrimos durante el experimento *(#118, #[TBD
-grounding])* — el "juez-política" es cableado, no ciencia ficción.
+grounding. Son las dos PRs que abrimos durante el experimento *(#118, #119; mas la #120
+que nacio de las primeras runs)* — el "juez-política" es cableado, no ciencia ficción.
 
 ## 5. Los tres perfiles comparados
 
