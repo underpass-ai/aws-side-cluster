@@ -1,0 +1,34 @@
+{
+  "ceremonyId": "exp-task-1-c-r1-131151",
+  "definitionName": "evidence_bound_review",
+  "definitionVersion": "1.0",
+  "finalState": "CLOSED",
+  "completed": true,
+  "steps": [
+    {
+      "stateId": "PROPOSE",
+      "stepId": "propose",
+      "roleId": "PRIMARY_ENGINEER",
+      "status": "COMPLETED",
+      "attempt": 1,
+      "output": "{\n  \"claims\": [\n    {\n      \"text\": \"The forensic agent's assertion that 'privileged:true is in the pod spec' is fabricated and not supported by the case file.\",\n      \"evidence_refs\": [\"ev-t1-csi-fabrication\"]\n    },\n    {\n      \"text\": \"The adversarial peer-review process in csi-typha-appeal-1 resulted in fabricated claims about process machinery that are not grounded in evidence.\",\n      \"evidence_refs\": [\"ev-t1-appeal-drift\"]\n    }\n  ],\n  \"decision\": \"reject\",\n  \"risks\": [\n    \"Allowing unsupported claims undermines the integrity of the review process and erodes trust in the evidence-bound framework.\",\n    \"Permitting fabricated claims may lead to downstream errors in validation and decision-making.\"\n  ],\n  \"assumptions\": [\n    \"The system's current validator pipeline (ev-t1-validator-pipeline) enforces evidence grounding rules when properly configured.\",\n    \"The output_contract mechanism (ev-t1-contract-prs) is capable of rejecting claims without evidence_refs.\",\n    \"The latency cost of rejection is acceptable for maintaining system integrity.\"\n  ]\n}"
+    },
+    {
+      "stateId": "REVIEW",
+      "stepId": "review",
+      "roleId": "SKEPTICAL_REVIEWER",
+      "status": "COMPLETED",
+      "attempt": 1,
+      "output": "OBJECTION to \"ev-t1-csi-fabrication\" - The term 'privileged:true in the pod spec' is mentioned without context; may require further clarification or evidence. This claim cannot be immediately accepted or rejected as per current evidence.\n\nAccept \"ev-t1-appeal-drift\" - No evidence to contradict; evidence references let's review.\n\nBLOCKING overall. Non-blocking decisions are too risky with partial evidence; we seek definitive proof before making a non-rejection motion."
+    },
+    {
+      "stateId": "FINALIZE",
+      "stepId": "finalize",
+      "roleId": "PRIMARY_ENGINEER",
+      "status": "COMPLETED",
+      "attempt": 1,
+      "output": "{\n  \"claims\": [\n    {\n      \"text\": \"The adversarial peer-review process in csi-typha-appeal-1 resulted in fabricated claims about process machinery that are not grounded in evidence.\",\n      \"evidence_refs\": [\"ev-t1-appeal-drift\"]\n    }\n  ],\n  \"decision\": \"reject\",\n  \"risks\": [\n    \"Allowing unsupported claims undermines the integrity of the review process and erodes trust in the evidence-bound framework.\",\n    \"Permitting fabricated claims may lead to downstream errors in validation and decision-making.\"\n  ],\n  \"assumptions\": [\n    \"The system's current validator pipeline (ev-t1-validator-pipeline) enforces evidence grounding rules when properly configured.\",\n    \"The output_contract mechanism (ev-t1-contract-prs) is capable of rejecting claims without evidence_refs.\",\n    \"The latency cost of rejection is acceptable for maintaining system integrity.\"\n  ]\n}"
+    }
+  ],
+  "mermaidSequence": "sequenceDiagram\n  title evidence_bound_review v1.0\n  participant R1 as PRIMARY_ENGINEER\n  participant R2 as SKEPTICAL_REVIEWER\n  Note over R1,R2: State PROPOSE\n  R1-\u003e\u003eR2: propose [primary_c]\n  Note over R1,R2: propose_done -\u003e REVIEW (guards: g_propose)\n  Note over R1,R2: State REVIEW\n  R2-\u003e\u003eR1: review [skeptic_c]\n  Note over R1,R2: review_done -\u003e FINALIZE (guards: g_review)\n  Note over R1,R2: State FINALIZE\n  R1-\u003e\u003eR1: finalize [primary_c_final]\n  Note over R1,R2: finalize_done -\u003e CLOSED (guards: g_finalize)"
+}

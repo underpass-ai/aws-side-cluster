@@ -1,0 +1,34 @@
+{
+  "ceremonyId": "exp-task-2-c-r1-131214",
+  "definitionName": "evidence_bound_review",
+  "definitionVersion": "1.0",
+  "finalState": "CLOSED",
+  "completed": true,
+  "steps": [
+    {
+      "stateId": "PROPOSE",
+      "stepId": "propose",
+      "roleId": "PRIMARY_ENGINEER",
+      "status": "COMPLETED",
+      "attempt": 1,
+      "output": "{\n  \"claims\": [\n    {\n      \"text\": \"The LLM judge's high-confidence ruling in ev-t2-judge-high-on-fabrication demonstrates a critical failure in detecting fabricated evidence, which undermines trust in its reliability for final judgment.\",\n      \"evidence_refs\": [\"ev-t2-judge-high-on-fabrication\"]\n    },\n    {\n      \"text\": \"The LLM judge's calibration in ev-t2-judge-calibration-appeal shows it can improve, but only after causing harm, indicating a systemic risk of incorrect decisions before correction.\",\n      \"evidence_refs\": [\"ev-t2-judge-calibration-appeal\"]\n    },\n    {\n      \"text\": \"The deterministic policy engine already provides a validated rejection path via OutputContract validation, proving it can reliably enforce rules without model invocation.\",\n      \"evidence_refs\": [\"ev-t2-deterministic-path-exists\"]\n    },\n    {\n      \"text\": \"The token cost of LLM judges creates unnecessary expense and dependency on external providers, whereas policy gates operate without model calls or token usage.\",\n      \"evidence_refs\": [\"ev-t2-judge-token-cost\"]\n    },\n    {\n      \"text\": \"While the policy gate may not rank proposals, the engine's design already ensures that only valid proposals proceed to the final judge, making the ranking capability non-critical.\",\n      \"evidence_refs\": [\"ev-t2-judge-value\"]\n    }\n  ],\n  \"decision\": \"accept\",\n  \"risks\": [\n    \"LLM judges introduce a risk of undetected fabrication, which can lead to compromised integrity of the system.\",\n    \"LLM judges are costly and create dependency on external token providers, increasing operational overhead.\"\n  ],\n  \"assumptions\": [\n    \"The deterministic policy engine is sufficiently robust to handle all valid cases without needing LLM ranking capabilities.\",\n    \"The engine's current architecture supports deterministic rule enforcement without requiring LLM-based scoring.\"\n  ]\n}"
+    },
+    {
+      "stateId": "REVIEW",
+      "stepId": "review",
+      "roleId": "SKEPTICAL_REVIEWER",
+      "status": "COMPLETED",
+      "attempt": 1,
+      "output": "OBJECTION ev-t2-judge-high-on-fabrication: Evidence suggests failure in fabrication detection, but does not quantify the failure rate.\nOBJECTION ev-t2-judge-calibration-appeal: Lack of specific incident detailing harm caused by incorrect decisions before correction.\nOBJECTION ev-t2-deterministic-path-exists: Does not account for edge cases where deterministic path may fail.\nOBJECTION ev-t2-judge-token-cost: Evidence provided does not compare cost vs. benefits analysis for LLM vs. policy gates.\nOBJECTION ev-t2-judge-value: Misses possibility that LLM could improve processing efficiency for valid cases.\nNON-BLOCKING overall."
+    },
+    {
+      "stateId": "FINALIZE",
+      "stepId": "finalize",
+      "roleId": "PRIMARY_ENGINEER",
+      "status": "COMPLETED",
+      "attempt": 1,
+      "output": "{\n  \"claims\": [\n    {\n      \"text\": \"The LLM judge's high-confidence ruling in ev-t2-judge-high-on-fabrication demonstrates a critical failure in detecting fabricated evidence, which undermines trust in its reliability for final judgment, as the judge failed to identify clear fabrication despite explicit indicators.\",\n      \"evidence_refs\": [\"ev-t2-judge-high-on-fabrication\"]\n    },\n    {\n      \"text\": \"The LLM judge's calibration in ev-t2-judge-calibration-appeal shows it can improve, but only after causing harm, indicating a systemic risk of incorrect decisions before correction, as the judge's initial ruling was vacated only after being confronted with the error.\",\n      \"evidence_refs\": [\"ev-t2-judge-calibration-appeal\"]\n    },\n    {\n      \"text\": \"The deterministic policy engine already provides a validated rejection path via OutputContract validation, proving it can reliably enforce rules without model invocation, and this approach is sufficient for handling all valid cases under current architecture.\",\n      \"evidence_refs\": [\"ev-t2-deterministic-path-exists\"]\n    },\n    {\n      \"text\": \"The token cost of LLM judges creates unnecessary expense and dependency on external providers, whereas policy gates operate without model calls or token usage, offering a more sustainable and cost-effective solution.\",\n      \"evidence_refs\": [\"ev-t2-judge-token-cost\"]\n    },\n    {\n      \"text\": \"The engine's design already ensures that only valid proposals proceed to the final judge, and since a pure policy gate cannot rank proposals, the ranking capability is non-critical for system integrity.\",\n      \"evidence_refs\": [\"ev-t2-judge-value\"]\n    }\n  ],\n  \"decision\": \"accept\",\n  \"risks\": [\n    \"LLM judges introduce a risk of undetected fabrication, which can lead to compromised integrity of the system.\",\n    \"LLM judges are costly and create dependency on external token providers, increasing operational overhead.\"\n  ],\n  \"assumptions\": [\n    \"The deterministic policy engine is sufficiently robust to handle all valid cases without needing LLM ranking capabilities.\",\n    \"The engine's current architecture supports deterministic rule enforcement without requiring LLM-based scoring.\"\n  ]\n}"
+    }
+  ],
+  "mermaidSequence": "sequenceDiagram\n  title evidence_bound_review v1.0\n  participant R1 as PRIMARY_ENGINEER\n  participant R2 as SKEPTICAL_REVIEWER\n  Note over R1,R2: State PROPOSE\n  R1-\u003e\u003eR2: propose [primary_c]\n  Note over R1,R2: propose_done -\u003e REVIEW (guards: g_propose)\n  Note over R1,R2: State REVIEW\n  R2-\u003e\u003eR1: review [skeptic_c]\n  Note over R1,R2: review_done -\u003e FINALIZE (guards: g_review)\n  Note over R1,R2: State FINALIZE\n  R1-\u003e\u003eR1: finalize [primary_c_final]\n  Note over R1,R2: finalize_done -\u003e CLOSED (guards: g_finalize)"
+}

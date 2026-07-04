@@ -1,0 +1,34 @@
+{
+  "ceremonyId": "exp-task-3-c-r1-131237",
+  "definitionName": "evidence_bound_review",
+  "definitionVersion": "1.0",
+  "finalState": "CLOSED",
+  "completed": true,
+  "steps": [
+    {
+      "stateId": "PROPOSE",
+      "stepId": "propose",
+      "roleId": "PRIMARY_ENGINEER",
+      "status": "COMPLETED",
+      "attempt": 1,
+      "output": "{\n  \"claims\": [\n    {\n      \"text\": \"AWS G6 ephemeral workers cannot reliably maintain stateful model jobs because their public IP changes on each start, requiring control plane resynchronization, and they are subject to idle reaping which can abruptly terminate jobs.\",\n      \"evidence_refs\": [\"ev-t3-ip-changes\", \"ev-t3-idle-reaper\"]\n    },\n    {\n      \"text\": \"While the EBS volume persists across stops, the process and GPU memory states do not, which undermines the reliability of stateful computations that depend on in-memory data.\",\n      \"evidence_refs\": [\"ev-t3-ebs-persists\"]\n    },\n    {\n      \"text\": \"The platform's design intentionally treats compute state as ephemeral, aligning with the in-memory registry that does not survive restarts, indicating a systemic preference for stateless operations.\",\n      \"evidence_refs\": [\"ev-t3-registry-inmemory\"]\n    }\n  ],\n  \"decision\": \"reject\",\n  \"risks\": [\n    \"Stateful jobs may fail due to unexpected worker shutdowns caused by the idle reaper, leading to data loss or job corruption.\",\n    \"IP address changes could cause communication failures between the control plane and workers during job execution.\",\n    \"Inconsistent behavior when workers are restarted, particularly under high load where capacity scarcity increases the likelihood of failed restarts.\"\n  ],\n  \"assumptions\": [\n    \"Stateful model jobs require consistent access to worker memory and network identity throughout their lifecycle.\",\n    \"The system's current architecture does not support durable state management for compute workers.\",\n    \"Workers being stopped and started is a common occurrence due to the idle reaper and capacity constraints.\"\n  ]\n}"
+    },
+    {
+      "stateId": "REVIEW",
+      "stepId": "review",
+      "roleId": "SKEPTICAL_REVIEWER",
+      "status": "COMPLETED",
+      "attempt": 1,
+      "output": "OBJECTION (ev-t3-ebs-persists): EBS persistance should not imply the rest of the system is ephemeral. MINOR \n\nOBJECTION (ev-t3-idle-reaper): Idle reaper exists to address capacity and not suppress stateful jobs. MINOR \n\nOBJECTION (ev-t3-registry-inmemory): In-memory registry misuse, if any, not necessarily blocking stateful operations. MINOR \n\nBLOCKING overall."
+    },
+    {
+      "stateId": "FINALIZE",
+      "stepId": "finalize",
+      "roleId": "PRIMARY_ENGINEER",
+      "status": "COMPLETED",
+      "attempt": 1,
+      "output": "{\n  \"claims\": [\n    {\n      \"text\": \"AWS G6 ephemeral workers cannot reliably execute stateful model jobs due to their public IP changes on each start, requiring control plane resynchronization, and their susceptibility to idle reaping which can abruptly terminate jobs.\",\n      \"evidence_refs\": [\"ev-t3-ip-changes\", \"ev-t3-idle-reaper\"]\n    },\n    {\n      \"text\": \"Although the G6's EBS volume persists across stops, process and GPU memory states do not, which undermines the reliability of stateful computations depending on in-memory data.\",\n      \"evidence_refs\": [\"ev-t3-ebs-persists\"]\n    },\n    {\n      \"text\": \"The platform's design treats compute state as ephemeral, evidenced by the in-memory registry and the fact that engine-side state does not survive restarts, indicating a systemic preference for stateless operations.\",\n      \"evidence_refs\": [\"ev-t3-registry-inmemory\"]\n    }\n  ],\n  \"decision\": \"reject\",\n  \"risks\": [\n    \"Stateful jobs may fail due to unexpected worker shutdowns caused by the idle reaper, leading to data loss or job corruption.\",\n    \"IP address changes could cause communication failures between the control plane and workers during job execution.\",\n    \"Inconsistent behavior when workers are restarted, particularly under high load where capacity scarcity increases the likelihood of failed restarts.\"\n  ],\n  \"assumptions\": [\n    \"Stateful model jobs require consistent access to worker memory and network identity throughout their lifecycle.\",\n    \"The system's current architecture does not support durable state management for compute workers.\",\n    \"Workers being stopped and started is a common occurrence due to the idle reaper and capacity constraints.\"\n  ]\n}"
+    }
+  ],
+  "mermaidSequence": "sequenceDiagram\n  title evidence_bound_review v1.0\n  participant R1 as PRIMARY_ENGINEER\n  participant R2 as SKEPTICAL_REVIEWER\n  Note over R1,R2: State PROPOSE\n  R1-\u003e\u003eR2: propose [primary_c]\n  Note over R1,R2: propose_done -\u003e REVIEW (guards: g_propose)\n  Note over R1,R2: State REVIEW\n  R2-\u003e\u003eR1: review [skeptic_c]\n  Note over R1,R2: review_done -\u003e FINALIZE (guards: g_review)\n  Note over R1,R2: State FINALIZE\n  R1-\u003e\u003eR1: finalize [primary_c_final]\n  Note over R1,R2: finalize_done -\u003e CLOSED (guards: g_finalize)"
+}

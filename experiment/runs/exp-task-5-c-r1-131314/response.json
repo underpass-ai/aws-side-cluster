@@ -1,0 +1,34 @@
+{
+  "ceremonyId": "exp-task-5-c-r1-131314",
+  "definitionName": "evidence_bound_review",
+  "definitionVersion": "1.0",
+  "finalState": "CLOSED",
+  "completed": true,
+  "steps": [
+    {
+      "stateId": "PROPOSE",
+      "stepId": "propose",
+      "roleId": "PRIMARY_ENGINEER",
+      "status": "COMPLETED",
+      "attempt": 1,
+      "output": "{\n  \"claims\": [\n    {\n      \"text\": \"The evidence shows that reviewer objections are currently ignored during synthesis, as demonstrated by the skeptic's valid alternative being dismissed without consideration.\",\n      \"evidence_refs\": [\"ev-t5-skeptic-ignored\"]\n    },\n    {\n      \"text\": \"Forced critique rounds do not guarantee convergence on truth, indicating that simply engaging with objections does not improve decision quality.\",\n      \"evidence_refs\": [\"ev-t5-rounds-not-convergence\"]\n    },\n    {\n      \"text\": \"The technical infrastructure supports implementing blocking semantics through existing mechanisms like OutputContract failure and FSM guards.\",\n      \"evidence_refs\": [\"ev-t5-blocking-mechanism-exists\"]\n    },\n    {\n      \"text\": \"Blocking reviewers introduces a liveness risk because retries may exhaust and halt the ceremony before reaching a terminal state.\",\n      \"evidence_refs\": [\"ev-t5-liveness-risk\"]\n    },\n    {\n      \"text\": \"Implementing blocking semantics increases compute costs due to extended worker lifetimes, which directly impacts resource utilization.\",\n      \"evidence_refs\": [\"ev-t5-reviewer-cost\"]\n    }\n  ],\n  \"decision\": \"request_changes\",\n  \"risks\": [\n    \"Liveness risk from blocking reviewers could cause ceremony halts without clear recovery path\",\n    \"Increased compute costs from prolonged worker lifetimes due to blocking behavior\"\n  ],\n  \"assumptions\": [\n    \"The current system architecture cannot handle a 'blocked-forever' state gracefully\",\n    \"Compute cost is a valid constraint that influences policy decisions\",\n    \"Blocking mechanism implementation is feasible but requires careful integration\"\n  ]\n}"
+    },
+    {
+      "stateId": "REVIEW",
+      "stepId": "review",
+      "roleId": "SKEPTICAL_REVIEWER",
+      "status": "COMPLETED",
+      "attempt": 1,
+      "output": "OBJECTION ev-t5-skeptic-ignored: Evidence lacks examples where valid alternative was dismissed. ACCEPT ev-t5-rounds-not-convergence: Convergence debate is not the goal, just demonstrating the dynamic nature of review cycles. OBJECTION ev-t5-blocking-mechanism-exists: Existing mechanisms, such as OutputContract failure, are insufficient for seamless blocking. REJECT ev-t5-liveness-risk: Liveness risks assumed, not empirically proven. REJECT ev-t5-reviewer-cost: Compute cost increases are not quantified, unclear if significant. BLOCKING overall."
+    },
+    {
+      "stateId": "FINALIZE",
+      "stepId": "finalize",
+      "roleId": "PRIMARY_ENGINEER",
+      "status": "COMPLETED",
+      "attempt": 1,
+      "output": "{\n  \"claims\": [\n    {\n      \"text\": \"The evidence shows that reviewer objections are currently ignored during synthesis, as demonstrated by the skeptic's valid alternative being dismissed without consideration.\",\n      \"evidence_refs\": [\"ev-t5-skeptic-ignored\"]\n    },\n    {\n      \"text\": \"Forced critique rounds do not guarantee convergence on truth, indicating that simply engaging with objections does not improve decision quality.\",\n      \"evidence_refs\": [\"ev-t5-rounds-not-convergence\"]\n    },\n    {\n      \"text\": \"The technical infrastructure supports implementing blocking semantics through existing mechanisms like OutputContract failure and FSM guards.\",\n      \"evidence_refs\": [\"ev-t5-blocking-mechanism-exists\"]\n    },\n    {\n      \"text\": \"Blocking reviewers introduces a liveness risk because retries may exhaust and halt the ceremony before reaching a terminal state.\",\n      \"evidence_refs\": [\"ev-t5-liveness-risk\"]\n    },\n    {\n      \"text\": \"Implementing blocking semantics increases compute costs due to extended worker lifetimes, which directly impacts resource utilization.\",\n      \"evidence_refs\": [\"ev-t5-reviewer-cost\"]\n    }\n  ],\n  \"decision\": \"accept\",\n  \"risks\": [\n    \"Liveness risk from blocking reviewers could cause ceremony halts without clear recovery path\",\n    \"Increased compute costs from prolonged worker lifetimes due to blocking behavior\"\n  ],\n  \"assumptions\": [\n    \"The current system architecture cannot handle a 'blocked-forever' state gracefully\",\n    \"Compute cost is a valid constraint that influences policy decisions\",\n    \"Blocking mechanism implementation is feasible but requires careful integration\"\n  ]\n}"
+    }
+  ],
+  "mermaidSequence": "sequenceDiagram\n  title evidence_bound_review v1.0\n  participant R1 as PRIMARY_ENGINEER\n  participant R2 as SKEPTICAL_REVIEWER\n  Note over R1,R2: State PROPOSE\n  R1-\u003e\u003eR2: propose [primary_c]\n  Note over R1,R2: propose_done -\u003e REVIEW (guards: g_propose)\n  Note over R1,R2: State REVIEW\n  R2-\u003e\u003eR1: review [skeptic_c]\n  Note over R1,R2: review_done -\u003e FINALIZE (guards: g_review)\n  Note over R1,R2: State FINALIZE\n  R1-\u003e\u003eR1: finalize [primary_c_final]\n  Note over R1,R2: finalize_done -\u003e CLOSED (guards: g_finalize)"
+}

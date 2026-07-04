@@ -1,0 +1,32 @@
+{
+  "decision_id": "exp-task-2-c-r1-131214",
+  "trace_id": "4c4bd9f60ac7bb0b3e016311dd1eda0f",
+  "ceremony_id": "exp-task-2-c-r1-131214",
+  "profile": "evidence_bound_review",
+  "task": "task-2",
+  "question": "Should the final judge of a ceremony be a deterministic policy engine or an LLM-as-judge? Decide: accept (deterministic policy), reject (LLM-as-judge), request_changes or request_more_evidence.",
+  "status": "accept",
+  "final_state": "CLOSED",
+  "meeting_execution_seconds": 10.6,
+  "rejected_claims": 0,
+  "worker_lifecycle": {
+    "provider": "aws",
+    "instance_family": "g6.xlarge",
+    "instance_id": "i-084f4b98659f48a19",
+    "ephemeral": true,
+    "state_at_run": "running",
+    "launched_at": "2026-07-04T11:06:26+00:00",
+    "idle_shutdown_triggered": true,
+    "stopped_at": "2026-07-04T13:23:11+02:00",
+    "idle_shutdown_evidence": "gpu-idle-reaper events.log: idle_for=350s launch_age=1003s"
+  },
+  "observability": {
+    "otel_trace_exported": true,
+    "logs_exported": true,
+    "metrics_exported": true
+  },
+  "final_claims_total": 5,
+  "claims_with_evidence": 5,
+  "claims_without_evidence": 0,
+  "unsupported_claim_escape_count": 0
+}

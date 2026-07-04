@@ -1,0 +1,113 @@
+version: "1.0"
+name: "evidence_bound_review"
+description: "Profile C: primary + skeptic on ephemeral worker + contract gate"
+inputs:
+  optional:
+    - evidence_pack
+outputs:
+  decision:
+    type: object
+states:
+  - id: PROPOSE
+    initial: true
+  - id: REVIEW
+  - id: FINALIZE
+  - id: CLOSED
+    terminal: true
+transitions:
+  - from: PROPOSE
+    to: REVIEW
+    trigger: propose_done
+    guards:
+      - g_propose
+  - from: REVIEW
+    to: FINALIZE
+    trigger: review_done
+    guards:
+      - g_review
+  - from: FINALIZE
+    to: CLOSED
+    trigger: finalize_done
+    guards:
+      - g_finalize
+steps:
+  - id: propose
+    state: PROPOSE
+    handler: primary_c
+    config:
+      agent_kind: vllm
+      provider.model: "qwen3-coder-30b"
+      provider.max_tokens: 1536
+      provider.timeout_secs: 300
+      see_prior: false
+      num_agents: 1
+      output_contract:
+        contract_id: evidence-bound-decision
+        format: json_object
+        required_fields: [claims, decision]
+        allowed_values:
+          decision: [accept, reject, request_changes, request_more_evidence]
+        evidence:
+          claims_field: claims
+          refs_field: evidence_refs
+          allowed_refs_from_context: evidence_pack
+      prompt: "You are the primary engineer reviewing a technical decision for the Underpass Choreographer platform. QUESTION: Should Choreographer reject final claims that carry no evidence_refs? Decide: accept (yes, reject unsupported claims), reject (no, allow them), request_changes or request_more_evidence.\nEVIDENCE PACK (the ONLY citable evidence; cite by id in evidence_refs):\n- [ev-t1-csi-fabrication] Run csi-typha-1 (2026-07-03, real): the forensic agent (30B) asserted 'privileged:true is in the pod spec' as evidence; the case file never contained that claim. The 3B fact-checker then recorded the fabrication as 'Fact', and the LLM judge ruled with confidence 'High' citing it.\n- [ev-t1-appeal-drift] Run csi-typha-appeal-1 (2026-07-03, trace a5ed9c258aa7bd21366f663241b2e7c9): three adversarial peer-review rounds increased fluency but not grounding; councils drifted into fabricated process machinery ('sub-20Hz log noise thresholds', 'semantic normalization layers with PCA/UMAP') unrelated to the evidence.\n- [ev-t1-validator-pipeline] The engine already runs a per-proposal validator pipeline (deliberate.rs attach_validations) and a deterministic rejection path: NoValidProposal{contract_id} fails the deliberation when no proposal satisfies the configured OutputContract.\n- [ev-t1-contract-prs] PR #118 exposes output_contract in ceremony step YAML (contract_id, required_fields, allowed_values, json_schema; unknown keys rejected). PR #119 adds an evidence grounding rule to OutputContract: each claim object must reference evidence_refs that exist in an allowed set, resolvable per-run from the RunCeremony context (allowed_refs_from_context).\n- [ev-t1-latency-cost] Rejection is not free: a failing step retries per retry_policy (max_attempts) and blocks the ceremony at its guard; there is no request_more_evidence FSM state yet (noted as future work in PR #118).\nEvery claim MUST cite at least one evidence id from the pack in its evidence_refs. CRITICAL OUTPUT FORMAT: your ENTIRE response must be raw JSON — the first character of your response must be { and the last must be }. NEVER wrap it in ``` fences. Shape: {\"claims\": [{\"text\": \"...\", \"evidence_refs\": [\"ev-...\"]}], \"decision\": \"accept|reject|request_changes|request_more_evidence\", \"risks\": [\"...\"], \"assumptions\": [\"...\"]}"
+  - id: review
+    state: REVIEW
+    handler: skeptic_c
+    config:
+      agent_kind: vllm
+      provider.model: "phi4-mini-aws"
+      provider.max_tokens: 1024
+      provider.timeout_secs: 300
+      see_prior: true
+      num_agents: 1
+      prompt: "You are the skeptical reviewer, running on the ephemeral AWS GPU worker. The primary engineer's proposal is in the prior discussion. Do NOT synthesize an answer. For each claim: state OBJECTION (with which evidence id contradicts or is missing) or ACCEPT. Flag any claim whose evidence_refs do not support its text. End with: BLOCKING or NON-BLOCKING overall. Plain text, terse."
+  - id: finalize
+    state: FINALIZE
+    handler: primary_c_final
+    config:
+      agent_kind: vllm
+      provider.model: "qwen3-coder-30b"
+      provider.max_tokens: 1536
+      provider.timeout_secs: 300
+      see_prior: true
+      num_agents: 1
+      output_contract:
+        contract_id: evidence-bound-decision
+        format: json_object
+        required_fields: [claims, decision]
+        allowed_values:
+          decision: [accept, reject, request_changes, request_more_evidence]
+        evidence:
+          claims_field: claims
+          refs_field: evidence_refs
+          allowed_refs_from_context: evidence_pack
+      prompt: "You are the primary engineer. Revise your proposal incorporating the reviewer's objections from the prior discussion (drop or fix unsupported claims; do not argue). QUESTION: Should Choreographer reject final claims that carry no evidence_refs? Decide: accept (yes, reject unsupported claims), reject (no, allow them), request_changes or request_more_evidence.\nEVIDENCE PACK (the ONLY citable evidence; cite by id in evidence_refs):\n- [ev-t1-csi-fabrication] Run csi-typha-1 (2026-07-03, real): the forensic agent (30B) asserted 'privileged:true is in the pod spec' as evidence; the case file never contained that claim. The 3B fact-checker then recorded the fabrication as 'Fact', and the LLM judge ruled with confidence 'High' citing it.\n- [ev-t1-appeal-drift] Run csi-typha-appeal-1 (2026-07-03, trace a5ed9c258aa7bd21366f663241b2e7c9): three adversarial peer-review rounds increased fluency but not grounding; councils drifted into fabricated process machinery ('sub-20Hz log noise thresholds', 'semantic normalization layers with PCA/UMAP') unrelated to the evidence.\n- [ev-t1-validator-pipeline] The engine already runs a per-proposal validator pipeline (deliberate.rs attach_validations) and a deterministic rejection path: NoValidProposal{contract_id} fails the deliberation when no proposal satisfies the configured OutputContract.\n- [ev-t1-contract-prs] PR #118 exposes output_contract in ceremony step YAML (contract_id, required_fields, allowed_values, json_schema; unknown keys rejected). PR #119 adds an evidence grounding rule to OutputContract: each claim object must reference evidence_refs that exist in an allowed set, resolvable per-run from the RunCeremony context (allowed_refs_from_context).\n- [ev-t1-latency-cost] Rejection is not free: a failing step retries per retry_policy (max_attempts) and blocks the ceremony at its guard; there is no request_more_evidence FSM state yet (noted as future work in PR #118).\nCRITICAL OUTPUT FORMAT: your ENTIRE response must be raw JSON — the first character of your response must be { and the last must be }. NEVER wrap it in ``` fences. Shape: {\"claims\": [{\"text\": \"...\", \"evidence_refs\": [\"ev-...\"]}], \"decision\": \"accept|reject|request_changes|request_more_evidence\", \"risks\": [\"...\"], \"assumptions\": [\"...\"]}"
+guards:
+  g_propose:
+    type: automated
+    check: "step_status:propose:COMPLETED"
+  g_review:
+    type: automated
+    check: "step_status:review:COMPLETED"
+  g_finalize:
+    type: automated
+    check: "step_status:finalize:COMPLETED"
+roles:
+  - id: PRIMARY_ENGINEER
+    allowed_actions:
+      - propose
+      - propose_done
+      - finalize
+      - finalize_done
+  - id: SKEPTICAL_REVIEWER
+    allowed_actions:
+      - review
+      - review_done
+timeouts:
+  step_default: 600
+retry_policies:
+  default:
+    max_attempts: 2
+    backoff_seconds: 2

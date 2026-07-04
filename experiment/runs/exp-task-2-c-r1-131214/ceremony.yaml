@@ -1,0 +1,113 @@
+version: "1.0"
+name: "evidence_bound_review"
+description: "Profile C: primary + skeptic on ephemeral worker + contract gate"
+inputs:
+  optional:
+    - evidence_pack
+outputs:
+  decision:
+    type: object
+states:
+  - id: PROPOSE
+    initial: true
+  - id: REVIEW
+  - id: FINALIZE
+  - id: CLOSED
+    terminal: true
+transitions:
+  - from: PROPOSE
+    to: REVIEW
+    trigger: propose_done
+    guards:
+      - g_propose
+  - from: REVIEW
+    to: FINALIZE
+    trigger: review_done
+    guards:
+      - g_review
+  - from: FINALIZE
+    to: CLOSED
+    trigger: finalize_done
+    guards:
+      - g_finalize
+steps:
+  - id: propose
+    state: PROPOSE
+    handler: primary_c
+    config:
+      agent_kind: vllm
+      provider.model: "qwen3-coder-30b"
+      provider.max_tokens: 1536
+      provider.timeout_secs: 300
+      see_prior: false
+      num_agents: 1
+      output_contract:
+        contract_id: evidence-bound-decision
+        format: json_object
+        required_fields: [claims, decision]
+        allowed_values:
+          decision: [accept, reject, request_changes, request_more_evidence]
+        evidence:
+          claims_field: claims
+          refs_field: evidence_refs
+          allowed_refs_from_context: evidence_pack
+      prompt: "You are the primary engineer reviewing a technical decision for the Underpass Choreographer platform. QUESTION: Should the final judge of a ceremony be a deterministic policy engine or an LLM-as-judge? Decide: accept (deterministic policy), reject (LLM-as-judge), request_changes or request_more_evidence.\nEVIDENCE PACK (the ONLY citable evidence; cite by id in evidence_refs):\n- [ev-t2-judge-high-on-fabrication] Run csi-typha-1 (real): the LLM judge ruled with confidence 'High' explicitly citing evidence that another agent had fabricated ('privileged:true in the pod spec' — absent from the case file). The LLM judge did not detect the fabrication.\n- [ev-t2-judge-calibration-appeal] Run csi-typha-appeal-1 (real): when confronted with its earlier failure, the LLM judge lowered its confidence to 'Medium' and vacated the original verdict — LLM judges can improve with better context, but calibration arrived only after the damage.\n- [ev-t2-deterministic-path-exists] The engine ships a deterministic rejection path: OutputContract validation in the deliberation pipeline ends in NoValidProposal{contract_id} with production validators (verified e2e in PR #118's test where prose-only proposals die against a ruling-contract).\n- [ev-t2-judge-token-cost] The LLM judge consumes provider tokens on every deliberation (judge model invocations recorded in engine metrics); a policy gate evaluates schema and evidence refs without any model call.\n- [ev-t2-judge-value] The engine's judge selects winners by intrinsic quality instead of arbitrary tie-break (CHOREO_JUDGE_ENABLED); a pure policy gate cannot rank two proposals that both satisfy the contract.\nEvery claim MUST cite at least one evidence id from the pack in its evidence_refs. CRITICAL OUTPUT FORMAT: your ENTIRE response must be raw JSON — the first character of your response must be { and the last must be }. NEVER wrap it in ``` fences. Shape: {\"claims\": [{\"text\": \"...\", \"evidence_refs\": [\"ev-...\"]}], \"decision\": \"accept|reject|request_changes|request_more_evidence\", \"risks\": [\"...\"], \"assumptions\": [\"...\"]}"
+  - id: review
+    state: REVIEW
+    handler: skeptic_c
+    config:
+      agent_kind: vllm
+      provider.model: "phi4-mini-aws"
+      provider.max_tokens: 1024
+      provider.timeout_secs: 300
+      see_prior: true
+      num_agents: 1
+      prompt: "You are the skeptical reviewer, running on the ephemeral AWS GPU worker. The primary engineer's proposal is in the prior discussion. Do NOT synthesize an answer. For each claim: state OBJECTION (with which evidence id contradicts or is missing) or ACCEPT. Flag any claim whose evidence_refs do not support its text. End with: BLOCKING or NON-BLOCKING overall. Plain text, terse."
+  - id: finalize
+    state: FINALIZE
+    handler: primary_c_final
+    config:
+      agent_kind: vllm
+      provider.model: "qwen3-coder-30b"
+      provider.max_tokens: 1536
+      provider.timeout_secs: 300
+      see_prior: true
+      num_agents: 1
+      output_contract:
+        contract_id: evidence-bound-decision
+        format: json_object
+        required_fields: [claims, decision]
+        allowed_values:
+          decision: [accept, reject, request_changes, request_more_evidence]
+        evidence:
+          claims_field: claims
+          refs_field: evidence_refs
+          allowed_refs_from_context: evidence_pack
+      prompt: "You are the primary engineer. Revise your proposal incorporating the reviewer's objections from the prior discussion (drop or fix unsupported claims; do not argue). QUESTION: Should the final judge of a ceremony be a deterministic policy engine or an LLM-as-judge? Decide: accept (deterministic policy), reject (LLM-as-judge), request_changes or request_more_evidence.\nEVIDENCE PACK (the ONLY citable evidence; cite by id in evidence_refs):\n- [ev-t2-judge-high-on-fabrication] Run csi-typha-1 (real): the LLM judge ruled with confidence 'High' explicitly citing evidence that another agent had fabricated ('privileged:true in the pod spec' — absent from the case file). The LLM judge did not detect the fabrication.\n- [ev-t2-judge-calibration-appeal] Run csi-typha-appeal-1 (real): when confronted with its earlier failure, the LLM judge lowered its confidence to 'Medium' and vacated the original verdict — LLM judges can improve with better context, but calibration arrived only after the damage.\n- [ev-t2-deterministic-path-exists] The engine ships a deterministic rejection path: OutputContract validation in the deliberation pipeline ends in NoValidProposal{contract_id} with production validators (verified e2e in PR #118's test where prose-only proposals die against a ruling-contract).\n- [ev-t2-judge-token-cost] The LLM judge consumes provider tokens on every deliberation (judge model invocations recorded in engine metrics); a policy gate evaluates schema and evidence refs without any model call.\n- [ev-t2-judge-value] The engine's judge selects winners by intrinsic quality instead of arbitrary tie-break (CHOREO_JUDGE_ENABLED); a pure policy gate cannot rank two proposals that both satisfy the contract.\nCRITICAL OUTPUT FORMAT: your ENTIRE response must be raw JSON — the first character of your response must be { and the last must be }. NEVER wrap it in ``` fences. Shape: {\"claims\": [{\"text\": \"...\", \"evidence_refs\": [\"ev-...\"]}], \"decision\": \"accept|reject|request_changes|request_more_evidence\", \"risks\": [\"...\"], \"assumptions\": [\"...\"]}"
+guards:
+  g_propose:
+    type: automated
+    check: "step_status:propose:COMPLETED"
+  g_review:
+    type: automated
+    check: "step_status:review:COMPLETED"
+  g_finalize:
+    type: automated
+    check: "step_status:finalize:COMPLETED"
+roles:
+  - id: PRIMARY_ENGINEER
+    allowed_actions:
+      - propose
+      - propose_done
+      - finalize
+      - finalize_done
+  - id: SKEPTICAL_REVIEWER
+    allowed_actions:
+      - review
+      - review_done
+timeouts:
+  step_default: 600
+retry_policies:
+  default:
+    max_attempts: 2
+    backoff_seconds: 2
