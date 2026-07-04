@@ -14,3 +14,4 @@ __pycache__/
 
 # Claude Code local session settings (permisos personales, no versionar)
 .claude/settings.local.json*
+tools/decision-trace-tui/target/
