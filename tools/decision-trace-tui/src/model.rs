@@ -70,11 +70,23 @@ pub struct LogEvent {
     pub detail: String,
 }
 
+/// Una fase legible del timeline: un step de la ceremonia con su span.
+/// (El waterfall crudo de spans cuesta de leer; esto es la narrativa.)
+#[derive(Debug, Clone)]
+pub struct Phase {
+    pub idx: usize,
+    pub name: String,
+    pub author: String,
+    pub start_offset_ms: f64,
+    pub duration_ms: f64,
+}
+
 /// La reconstruccion completa: todo lo que sobrevive al worker.
 #[derive(Debug)]
 pub struct Reconstruction {
     pub artifact: DecisionArtifact,
     pub spans: Vec<Span>,
+    pub phases: Vec<Phase>,
     pub events: Vec<LogEvent>,
     pub worker_alive_now: Option<bool>,
     pub trace_duration_ms: f64,

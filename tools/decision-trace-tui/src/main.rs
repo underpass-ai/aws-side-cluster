@@ -57,9 +57,47 @@ fn reconstruct(args: &Args) -> Result<Reconstruction> {
         .as_ref()
         .and_then(|w| sources::worker_alive(&w.instance_id));
 
+    // Fases legibles: los spans `deliberate` en orden de inicio, casados con
+    // los nombres de step (eventos "ceremony step deliberation completed",
+    // detail step=X, mismo orden) y su autor (primer "proposal drafted" del
+    // tramo). El resto de spans es fontaneria: fuera de la narrativa.
+    let step_names: Vec<String> = events
+        .iter()
+        .filter(|e| e.message == "ceremony step deliberation completed")
+        .filter_map(|e| {
+            e.detail
+                .split_whitespace()
+                .find_map(|kv| kv.strip_prefix("step=").map(str::to_owned))
+        })
+        .collect();
+    let authors: Vec<String> = events
+        .iter()
+        .filter(|e| e.message == "proposal drafted")
+        .filter_map(|e| {
+            e.detail
+                .split_whitespace()
+                .find_map(|kv| kv.strip_prefix("author=").map(str::to_owned))
+        })
+        .collect();
+    let mut deliberates: Vec<&model::Span> =
+        spans.iter().filter(|s| s.name == "deliberate").collect();
+    deliberates.sort_by_key(|s| s.start_ns);
+    let phases = deliberates
+        .iter()
+        .enumerate()
+        .map(|(i, s)| model::Phase {
+            idx: i + 1,
+            name: step_names.get(i).cloned().unwrap_or_else(|| s.name.clone()),
+            author: authors.get(i).cloned().unwrap_or_default(),
+            start_offset_ms: (s.start_ns.saturating_sub(t0)) as f64 / 1_000_000.0,
+            duration_ms: s.duration_ms(),
+        })
+        .collect();
+
     Ok(Reconstruction {
         artifact,
         spans,
+        phases,
         events,
         worker_alive_now,
         trace_duration_ms: (t1.saturating_sub(t0)) as f64 / 1_000_000.0,
