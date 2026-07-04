@@ -1,9 +1,10 @@
 # Dejé que mis workers GPU se apagaran a los 5 minutos. Sus decisiones tenían que seguir siendo auditables.
 
-> **BORRADOR v1 (castellano)** — 2026-07-04. Regla: nada inventado. Todo lo
-> marcado `[TBD]` se rellena con datos de las runs del experimento (fase 4).
-> Todo lo demás es real y tiene evidencia (trace_id, logs o commits).
-> Traducción al inglés cuando el texto esté cerrado.
+> **BORRADOR v2 (castellano)** — 2026-07-04. Regla cumplida: nada inventado.
+> El experimento está EJECUTADO y todos los datos son reales (fuentes en
+> `experiment/RESULTS.md`; cada cifra tiene artifact, trace_id o log).
+> Pendiente: elegir hook A/B, capturas (comandos en el apéndice) y pasada
+> editorial humana. Traducción al inglés cuando el texto esté cerrado.
 
 ---
 
@@ -184,7 +185,7 @@ La comparación es de **gobernanza**, no de modelos:
 | C `evidence_bound_review` | 2 (uno en el worker efímero) | sí | sí |
 
 Cinco tareas de revisión reales (decisiones de diseño del propio motor de
-ceremonias), tres perfiles, `[TBD]` ejecuciones.
+ceremonias), tres perfiles, 15 ejecuciones.
 
 **La métrica estrella: `unsupported_claim_escape_count`** — cuántas
 afirmaciones sin evidencia consiguieron llegar a la decisión final. No mide si
@@ -192,23 +193,36 @@ el modelo "suena bien". Mide si el sistema deja pasar mentiras.
 
 ## 6. Qué medí
 
-*[TBD — tabla real tras las runs. Columnas ya fijadas:]*
+Los resultados reales (2026-07-04; cada fila sale de artifacts persistidos con
+su trace_id):
 
-| Perfil | Claims totales | Con evidencia | Escaped | Rechazadas | Traza sobrevive al shutdown | GPU-minutos cloud | Decisión final |
-|---|---|---|---|---|---|---|---|
-| A | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| B | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| C | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+| Perfil | Claims totales | Con evidencia | **Escaped** | Traza sobrevive al shutdown | Decisiones |
+|---|---|---|---|---|---|
+| A freeform | 14 | 0 | **14** | sí | 4 accept · 1 reject |
+| B evidence gate | 18 | 18 | **0** | sí | 4 accept · 1 reject |
+| C evidence-bound review | 18 | 18 | **0** | sí | 3 accept · **2 reject** |
 
-Más las de infraestructura: cold start del worker `[TBD]`s, tiempo hasta el
-primer span `[TBD]`s, apagado por inactividad a los `[TBD]`s del último
-request (el reaper registra cada muerte con timestamp).
+El baseline hizo exactamente lo que se temía: **las 14 claims del perfil A
+llegaron a la decisión sin una sola referencia a evidencia**. Con el contrato
+activado, cero de treinta y seis. Y el dato que no esperaba: **con la misma
+evidencia, la tarea 1 fue `accept` en B y `reject` en C** — las objeciones
+del escéptico (que corría en el worker efímero) cambiaron el veredicto, no
+solo lo decoraron.
 
-Y una que me gusta especialmente: **bytes de evidencia persistida por
-GPU-minuto consumido** `[TBD]`. El cómputo que produjo la decisión costó
-`[TBD]`; conservar su registro completo cuesta `[TBD]`. La evidencia es
-órdenes de magnitud más barata que el cómputo que la genera. Guardarla toda no
-tiene excusa.
+Infraestructura, medida con timestamps:
+
+- Cold start: petición de arranque → instancia running **77s** → reviewer
+  sirviendo inferencia **306s**.
+- Las 5 decisiones del perfil C (3 pasos cada una): **92 segundos** en total.
+- **Apagado autónomo**: el reaper mató el worker a las 13:23:11 tras 350s de
+  inactividad medida (la primera línea real de su `events.log`:
+  `idle_shutdown instances=i-084f… idle_for=350s`).
+- Vida total del worker: **15,5 GPU-minutos** (~0,12 USD).
+
+Y la que más me gusta: **~32 KB de evidencia persistida** conservan el
+registro completo de decisiones que costaron 15,5 GPU-minutos producir. La
+evidencia es órdenes de magnitud más barata que el cómputo que la genera.
+Guardarla toda no tiene excusa.
 
 ## 7. La reconstrucción (el momento que buscaba)
 
@@ -219,45 +233,98 @@ worker. Desde ahí reconstruye todo: el waterfall de spans desde Tempo, la
 timeline de la deliberación desde Loki, y — el detalle que me importa —
 consulta si el worker que ejecutó aquello **sigue existiendo**.
 
-La primera reconstrucción real (mi ceremonia de apelación, un día después,
-con la instancia g6 ya parada):
+La reconstrucción de la tarea 1 del perfil C, con el worker YA MUERTO — y
+muerto por decisión propia del sistema (el reaper, no yo):
 
 ```text
-== decision dec_2026_07_03_appeal ==
-status: request_changes · trace: a5ed9c25… (204.4s, 8 spans)
-worker: g6.xlarge i-084f… idle_shutdown=… alive_now=Some(false)
+== decision exp-task-1-c-r1-131151 (evidence_bound_review) ==
+status: reject · trace: 80157a56… (6.9s, 6 spans)
+claims: 1 total, 1 con evidencia, 0 ESCAPED
+worker: g6.xlarge i-084f… idle_shutdown=true alive_now=Some(false)
 -- spans --
-rpc.run_ceremony (204423.0ms)
-  prepare_ceremony_participants (0.2ms)
-  run_ceremony (204422.4ms)
-    deliberate (137723.6ms)   ← el council de 3 rondas
-    …
--- eventos (78) --
-17:15:30 proposal drafted author=agent-appeal_engineers-0
-17:15:40 peer critique and revision reviewer=engineers-0 round=1
+rpc.run_ceremony (6933.7ms)
+  run_ceremony (6933.3ms)
+    deliberate (1604.4ms)   ← primary propone (local)
+    deliberate (3989.1ms)   ← el escéptico objeta (desde la L4)
+    deliberate (1339.6ms)   ← revisión final contra el contrato
+-- eventos (33) --
+11:11:52 validator=claims-evidence-grounded passed=true
+         verdict=all 2 claims grounded in the evidence pack (5 allowed refs)
+11:11:56 proposal drafted author=agent-skeptic_c-0
 …
 ```
 
-El worker no existe. La decisión, entera — quién propuso qué, quién criticó a
-quién y en qué ronda, qué validó cada validator — sí.
+El worker no existe. La decisión, entera — quién propuso qué, qué objetó el
+escéptico, qué validó el juez-política claim a claim — sí.
 
-*[CAPTURA 2 aquí: el TUI completo con el footer "el worker GPU ya NO existe".
-TBD: captura de una run del experimento, no de la apelación.]*
+*[CAPTURA 2 aquí: el TUI completo sobre esta decisión, footer verde "el
+worker GPU ya NO existe". Comando listo en el apéndice.]*
 
 Una traza no es solo un artefacto de debugging. En un sistema de agentes,
 puede ser parte del expediente de la decisión.
 
 ## 8. Resultados
 
-*[TBD — sección completa tras las runs. Esqueleto:]*
+La tabla del §6 es el resultado principal: **0/36 claims sin evidencia
+llegaron a una decisión final en los perfiles con contrato, contra 14/14 en
+el baseline**. Tres piezas más completan el expediente:
 
-- Tabla real de los tres perfiles (§6).
-- `[TBD]` ejemplo real de claim rechazada por el juez-política, con el texto
-  del veredicto del validator.
-- `[TBD]` el decision artifact JSON completo de una run C.
-- Limitaciones honestas: esto no es un benchmark científico de razonamiento;
-  es un experimento de arquitectura operativa. n=`[TBD]` ejecuciones sobre 5
-  tareas; los resultados hablan de este sistema, no de los LLMs en general.
+**El escéptico bloqueando de verdad** (output real del reviewer en la L4,
+tarea 1): el primary proponía aceptar; el reviewer respondió:
+
+> OBJECTION to "ev-t1-csi-fabrication" — the term 'privileged:true in the pod
+> spec' is mentioned without context; may require further clarification. […]
+> **BLOCKING overall.** Non-blocking decisions are too risky with partial
+> evidence; we seek definitive proof before making a non-rejection motion.
+
+La decisión final fue `reject`. En el perfil B, sin reviewer, la misma
+evidencia terminó en `accept`. El worker efímero no participó de adorno.
+
+**El juez-política matando propuestas de verdad**: en las primeras runs, el
+gate rechazó como `NoValidProposal` propuestas *bien fundadas* — porque los
+modelos envolvían el JSON en fences markdown pese a prompts explícitos en
+contra (devstral: siempre; qwen3: el 60% de las runs). Es la anécdota más
+honesta del experimento: un policy gate estricto primero te enseña cuánto de
+tu pipeline depende de cosmética de transporte. Lo resolvimos en el motor
+(los validators toleran payloads *puramente* fenceados — PR #120), porque la
+alternativa era que el gate midiera obediencia de formato en vez de calidad
+de evidencia.
+
+**El decision artifact real** (tarea 1, perfil C, tal como está en S3):
+
+```json
+{
+  "decision_id": "exp-task-1-c-r1-131151",
+  "trace_id": "80157a56cf6cc30994585d31b1cc1a6f",
+  "profile": "evidence_bound_review",
+  "status": "reject",
+  "final_claims_total": 1,
+  "claims_with_evidence": 1,
+  "unsupported_claim_escape_count": 0,
+  "worker_lifecycle": {
+    "instance_family": "g6.xlarge",
+    "ephemeral": true,
+    "idle_shutdown_triggered": true,
+    "stopped_at": "2026-07-04T13:23:11+02:00",
+    "idle_shutdown_evidence": "gpu-idle-reaper events.log: idle_for=350s"
+  },
+  "observability": {
+    "otel_trace_exported": true,
+    "logs_exported": true,
+    "metrics_exported": true
+  }
+}
+```
+
+**Limitaciones honestas**: esto no es un benchmark científico de
+razonamiento; es un experimento de arquitectura operativa. n=15 ejecuciones
+sobre 5 tareas y una repetición; los resultados hablan de este sistema, no de
+los LLMs en general. `rejected_claims` va a cero en todos los perfiles porque
+el gate actual rechaza propuestas enteras, no claims individuales (el estado
+`request_more_evidence` como transición de primera clase es trabajo futuro
+anotado en la PR #118). Y el "5 minutos" del titular es el contador de idle:
+en sesiones cortas, el periodo de gracia post-arranque (10 min, para no matar
+la carga de modelos) domina el tiempo total hasta el apagado.
 
 ## 9. Qué cambió en mi cabeza
 
@@ -283,13 +350,22 @@ medir la calidad de la evidencia.
 
 ## Apéndice para la redacción (no publicar)
 
-- **Evidencia real ya disponible**: trace `a5ed9c258aa7bd21366f663241b2e7c9`
-  (apelación, 204s), ceremonias en `choreographer/runs/*.md`, reaper
-  `events.log`, PRs upstream #115 (banner NOTES), #116 (runbook
-  observabilidad), #117 (runbook autoría), #118 (output contract en YAML),
-  #119 (grounding validator: refs dinamicas del context via allowed_refs_from_context, fail-loud si el pack falta).
+- **TODOS los datos rellenados con las runs del 2026-07-04** (fuentes:
+  `experiment/RESULTS.md`, artifacts en `experiment/runs/` + S3 `decisions/`,
+  reaper `~/.local/state/gpu-idle-reaper/events.log`). Sin TBD de datos.
 - **Decisión pendiente**: hook A vs B (probar con 2-3 lectores).
-- **Capturas pendientes**: las 5 del §16 del diseño, todas de runs reales.
+- **PRs upstream**: #115 banner NOTES · #116 runbook observabilidad · #117
+  runbook autoría · #118 output contract YAML · #119 grounding validator ·
+  #120 tolerancia a fences. Las 3 últimas SON el juez-política.
+- **Capturas pendientes (comandos listos)**:
+  1. TUI reconstrucción (LA captura):
+     `TEMPO=$(kubectl -n monitoring get svc tempo -o jsonpath='{.spec.clusterIP}'); LOKI=$(kubectl -n monitoring get svc loki -o jsonpath='{.spec.clusterIP}'); ./tools/decision-trace-tui/target/debug/decision-trace-tui experiment/runs/exp-task-1-c-r1-131151/decision.json --tempo http://$TEMPO:3200 --loki http://$LOKI:3100`
+  2. Waterfall en Grafana → Tempo, trace `80157a56cf6cc30994585d31b1cc1a6f`
+     (o `4c4bd9f6…` task-2 C, más spans).
+  3. Loki en Grafana: `{namespace="underpass-labs", pod=~"choreographer.*"} |= "exp-task-1-c-r1-131151"` — se ve el veredicto del gate por claim.
+  4. Decision JSON: ya embebido en §8 (real).
+  5. Métricas: panel Prometheus `vllm:num_requests_running` de 13:06–13:24
+     (se ve la actividad del batch C y el silencio que mató al worker).
 - **Título inglés**: "I Let My AI GPU Workers Shut Down After 5 Minutes.
   Their Decisions Still Had to Be Auditable."
 - Frases §19 del diseño ya integradas; revisar que ninguna quede huérfana.
