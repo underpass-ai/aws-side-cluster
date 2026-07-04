@@ -1,0 +1,10 @@
+# Unit de usuario (como el demand-gateway): systemctl --user.
+# Instalar: cp a ~/.config/systemd/user/ + daemon-reload + enable --now el .timer
+[Unit]
+Description=GPU idle reaper: stop EC2 GPU tras 5 min sin peticiones vLLM (Prometheus)
+
+[Service]
+Type=oneshot
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=AWS_REGION=eu-south-2
+ExecStart=%h/ai/developents/aws-side-cluster/scripts/gpu-idle-reaper.sh
