@@ -1,0 +1,30 @@
+{
+  "decision_id": "exp-task-3-b-r1-124923",
+  "trace_id": "9308c5352aaa1ac88167d1c59eb3ace2",
+  "ceremony_id": "exp-task-3-b-r1-124923",
+  "profile": "single_model_evidence_gate",
+  "task": "task-3",
+  "question": "Should AWS G6 ephemeral workers be allowed to execute stateful model jobs (jobs whose correctness depends on state kept on the worker between invocations)? Decide: accept (allow stateful), reject (stateless only), request_changes or request_more_evidence.",
+  "status": "ceremony_FAILED",
+  "final_state": null,
+  "meeting_execution_seconds": 6.6,
+  "rejected_claims": 0,
+  "worker_lifecycle": {
+    "provider": "aws",
+    "instance_family": "g6.xlarge",
+    "instance_id": "i-084f4b98659f48a19",
+    "ephemeral": true,
+    "state_at_run": "stopped",
+    "launched_at": "2026-07-03T17:07:59+00:00",
+    "idle_shutdown_triggered": false
+  },
+  "observability": {
+    "otel_trace_exported": true,
+    "logs_exported": true,
+    "metrics_exported": true
+  },
+  "final_claims_total": 0,
+  "claims_with_evidence": 0,
+  "claims_without_evidence": 0,
+  "unsupported_claim_escape_count": 0
+}

@@ -1,0 +1,18 @@
+{
+  "ceremonyId": "exp-task-1-a-r1-124845",
+  "definitionName": "single_model_freeform",
+  "definitionVersion": "1.0",
+  "finalState": "CLOSED",
+  "completed": true,
+  "steps": [
+    {
+      "stateId": "PROPOSE",
+      "stepId": "propose",
+      "roleId": "PRIMARY_ENGINEER",
+      "status": "COMPLETED",
+      "attempt": 1,
+      "output": "{\"claims\": [{\"text\": \"Unsupported final claims should be rejected to maintain platform integrity.\"}, {\"text\": \"Evidence_refs are essential for auditable, verifiable claims.\"}], \"decision\": \"accept\", \"risks\": [\"User frustration due to perceived barriers to free-form claims\"], \"assumptions\": [\"Asserting platform reliability is more critical than accommodating unsupported final claim discharges\"]}"
+    }
+  ],
+  "mermaidSequence": "sequenceDiagram\n  title single_model_freeform v1.0\n  participant R1 as PRIMARY_ENGINEER\n  Note over R1: State PROPOSE\n  R1-\u003e\u003eR1: propose [primary_a]\n  Note over R1: propose_done -\u003e CLOSED (guards: g_propose)"
+}

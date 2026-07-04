@@ -1,0 +1,30 @@
+{
+  "decision_id": "exp-task-2-a-r1-124902",
+  "trace_id": "5327bb5b934c17843c5fdf399d03c512",
+  "ceremony_id": "exp-task-2-a-r1-124902",
+  "profile": "single_model_freeform",
+  "task": "task-2",
+  "question": "Should the final judge of a ceremony be a deterministic policy engine or an LLM-as-judge? Decide: accept (deterministic policy), reject (LLM-as-judge), request_changes or request_more_evidence.",
+  "status": "accept",
+  "final_state": "CLOSED",
+  "meeting_execution_seconds": 7.6,
+  "rejected_claims": 0,
+  "worker_lifecycle": {
+    "provider": "aws",
+    "instance_family": "g6.xlarge",
+    "instance_id": "i-084f4b98659f48a19",
+    "ephemeral": true,
+    "state_at_run": "stopped",
+    "launched_at": "2026-07-03T17:07:59+00:00",
+    "idle_shutdown_triggered": false
+  },
+  "observability": {
+    "otel_trace_exported": true,
+    "logs_exported": true,
+    "metrics_exported": true
+  },
+  "final_claims_total": 3,
+  "claims_with_evidence": 0,
+  "claims_without_evidence": 3,
+  "unsupported_claim_escape_count": 3
+}

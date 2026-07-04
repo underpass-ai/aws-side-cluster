@@ -1,0 +1,26 @@
+{
+  "id": "task-4",
+  "question": "Should model responses in ceremonies be persisted raw, summarized, or both? Decide: accept (both raw and summarized), reject (raw only), request_changes (summarized only) or request_more_evidence.",
+  "evidence": [
+    {
+      "id": "ev-t4-loki-raw-value",
+      "text": "The full decision timeline of run csi-typha-appeal-1 was reconstructed from raw Loki logs after the GPU worker was stopped: 78 events including every draft, all 12 peer critiques with round numbers, and every validator verdict. Raw persistence made the reconstruction possible."
+    },
+    {
+      "id": "ev-t4-preview-truncation",
+      "text": "Engine logs store proposal previews truncated (content_preview), not full outputs; the full winner content only travels in the RunCeremony response. A consumer that discards that response loses the only complete copy."
+    },
+    {
+      "id": "ev-t4-storage-cost",
+      "text": "The complete evidence of a 31-LLM-call ceremony (78 log events + 8 spans + response JSON) measures in the tens of kilobytes; the GPU compute that produced it ran for ~3.5 minutes on two nodes. Evidence storage cost is negligible relative to compute."
+    },
+    {
+      "id": "ev-t4-summary-drift-risk",
+      "text": "Runs csi-typha-1 and appeal (real) showed models summarizing prior context with drift and fabrication (a summary asserted 'privileged:true' that no source contained). LLM-generated summaries are lossy AND can introduce false statements."
+    },
+    {
+      "id": "ev-t4-pii-surface",
+      "text": "Raw persistence increases the audit surface: full outputs may contain sensitive fragments of prompts/evidence; summaries can redact. Retention policy applies to whichever form is kept."
+    }
+  ]
+}

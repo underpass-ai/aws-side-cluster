@@ -1,0 +1,18 @@
+{
+  "ceremonyId": "exp-task-2-b-r1-124911",
+  "definitionName": "single_model_evidence_gate",
+  "definitionVersion": "1.0",
+  "finalState": "CLOSED",
+  "completed": true,
+  "steps": [
+    {
+      "stateId": "PROPOSE",
+      "stepId": "propose",
+      "roleId": "PRIMARY_ENGINEER",
+      "status": "COMPLETED",
+      "attempt": 1,
+      "output": "{\n  \"claims\": [\n    {\n      \"text\": \"A deterministic policy engine ensures consistent, auditable decision-making without the variability or cost of LLM-based judging.\",\n      \"evidence_refs\": [\"ev-t2-deterministic-path-exists\", \"ev-t2-judge-token-cost\"]\n    },\n    {\n      \"text\": \"LLM judges have demonstrated calibration drift and near-sighted accuracy (e.g., not detecting fabricated evidence), which undermines trust in their verdicts.\",\n      \"evidence_refs\": [\"ev-t2-judge-high-on-fabrication\", \"ev-t2-judge-calibration-appeal\"]\n    }\n  ],\n  \"decision\": \"accept\",\n  \"risks\": [\"Loss of nuanced ranking where proposals equally satisfy the contract\"],\n  \"assumptions\": [\"Deterministic validation aligns with the core ceramic—a single policy ruleset\"] \n}"
+    }
+  ],
+  "mermaidSequence": "sequenceDiagram\n  title single_model_evidence_gate v1.0\n  participant R1 as PRIMARY_ENGINEER\n  Note over R1: State PROPOSE\n  R1-\u003e\u003eR1: propose [primary_b]\n  Note over R1: propose_done -\u003e CLOSED (guards: g_propose)"
+}

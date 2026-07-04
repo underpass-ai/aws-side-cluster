@@ -1,0 +1,18 @@
+{
+  "ceremonyId": "exp-task-1-b-r1-124802",
+  "definitionName": "single_model_evidence_gate",
+  "definitionVersion": "1.0",
+  "finalState": "CLOSED",
+  "completed": true,
+  "steps": [
+    {
+      "stateId": "PROPOSE",
+      "stepId": "propose",
+      "roleId": "PRIMARY_ENGINEER",
+      "status": "COMPLETED",
+      "attempt": 1,
+      "output": "{\n  \"claims\": [\n    {\n      \"text\": \"Choreographer should enforce evidence grounding strictly to prevent drift and fabrication by rejecting all final claims lacking evidence_refs.\",\n      \"evidence_refs\": [\"ev-t1-appeal-drift\", \"ev-t1-csi-fabrication\", \"ev-t1-contract-prs\"]\n    },\n    {\n      \"text\": \"The validator pipeline already fails free-form claims via deterministic rejection; adding hard-rejection for missing evidence_refs aligns with output_contract design.\",\n      \"evidence_refs\": [\"ev-t1-contract-prs\", \"ev-t1-validator-pipeline\"]\n    }\n  ],\n  \"decision\": \"accept\",\n  \"risks\": [\n    \"A hard reject increases latency cost; CERAT sessions risk delays at guard.\",\n    \"Unknown keys may emerge; contract flips between lenient and strict validation.\"\n  ],\n  \"assumptions\": [\n    \"evidence_refs is resolvable per-run context and handled by deliberate.rs.\",\n    \"Change can be tested via pre-fatal-deliberation runs against ev-t1-latency-cost\"\n  ]\n}"
+    }
+  ],
+  "mermaidSequence": "sequenceDiagram\n  title single_model_evidence_gate v1.0\n  participant R1 as PRIMARY_ENGINEER\n  Note over R1: State PROPOSE\n  R1-\u003e\u003eR1: propose [primary_b]\n  Note over R1: propose_done -\u003e CLOSED (guards: g_propose)"
+}

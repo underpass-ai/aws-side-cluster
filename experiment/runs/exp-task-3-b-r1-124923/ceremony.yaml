@@ -1,0 +1,57 @@
+version: "1.0"
+name: "single_model_evidence_gate"
+description: "Profile B: evidence pack + deterministic contract gate"
+inputs:
+  optional:
+    - evidence_pack
+outputs:
+  decision:
+    type: object
+states:
+  - id: PROPOSE
+    initial: true
+  - id: CLOSED
+    terminal: true
+transitions:
+  - from: PROPOSE
+    to: CLOSED
+    trigger: propose_done
+    guards:
+      - g_propose
+steps:
+  - id: propose
+    state: PROPOSE
+    handler: primary_b
+    config:
+      agent_kind: vllm
+      provider.model: "qwen3-coder-30b"
+      provider.max_tokens: 1536
+      provider.timeout_secs: 300
+      see_prior: false
+      num_agents: 1
+      output_contract:
+        contract_id: evidence-bound-decision
+        format: json_object
+        required_fields: [claims, decision]
+        allowed_values:
+          decision: [accept, reject, request_changes, request_more_evidence]
+        evidence:
+          claims_field: claims
+          refs_field: evidence_refs
+          allowed_refs_from_context: evidence_pack
+      prompt: "You are the primary engineer reviewing a technical decision for the Underpass Choreographer platform. QUESTION: Should AWS G6 ephemeral workers be allowed to execute stateful model jobs (jobs whose correctness depends on state kept on the worker between invocations)? Decide: accept (allow stateful), reject (stateless only), request_changes or request_more_evidence.\nEVIDENCE PACK (the ONLY citable evidence; cite by id in evidence_refs):\n- [ev-t3-ip-changes] Every stop/start of the G6 changes its public IP; the control plane must resync the WireGuard endpoint (wg-sync). Verified across multiple starts on 2026-07-03/04 (endpoints 18.101.186.131, 15.216.147.179, 15.217.12.130).\n- [ev-t3-idle-reaper] A reaper stops the G6 after 300s without vLLM requests (Prometheus vllm:num_requests_running == 0 sustained); shutdown can happen at any moment between jobs and is logged with timestamps. The shutdown policy is part of the platform design, not an accident.\n- [ev-t3-ebs-persists] The G6's EBS volume (100GB: model weights, container images) persists across stop/start — disk state survives, but process/GPU memory state does not.\n- [ev-t3-capacity-scarce] g6 capacity in eu-south-2a is scarce: starts fail with capacity errors and need retries (observed repeatedly; first start attempt failed on 3 of 4 session starts on 2026-07-03/04). A worker may not come back promptly after a stop.\n- [ev-t3-registry-inmemory] The choreographer's agent/council registry is in-memory per pod: engine-side state also does not survive restarts. The platform's persistence model is: evidence persists (S3/Tempo/Loki/Prometheus), compute state does not.\nEvery claim MUST cite at least one evidence id from the pack in its evidence_refs; claims you cannot support, leave out. CRITICAL OUTPUT FORMAT: your ENTIRE response must be raw JSON — the first character of your response must be { and the last must be }. NEVER wrap it in ``` fences. Shape: {\"claims\": [{\"text\": \"...\", \"evidence_refs\": [\"ev-...\"]}], \"decision\": \"accept|reject|request_changes|request_more_evidence\", \"risks\": [\"...\"], \"assumptions\": [\"...\"]}"
+guards:
+  g_propose:
+    type: automated
+    check: "step_status:propose:COMPLETED"
+roles:
+  - id: PRIMARY_ENGINEER
+    allowed_actions:
+      - propose
+      - propose_done
+timeouts:
+  step_default: 600
+retry_policies:
+  default:
+    max_attempts: 2
+    backoff_seconds: 2

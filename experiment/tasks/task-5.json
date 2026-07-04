@@ -1,0 +1,26 @@
+{
+  "id": "task-5",
+  "question": "Should reviewer objections block final acceptance, or only lower confidence? Decide: accept (objections block until resolved), reject (objections only annotate/lower confidence), request_changes or request_more_evidence.",
+  "evidence": [
+    {
+      "id": "ev-t5-skeptic-ignored",
+      "text": "Run csi-typha-1 (real): the skeptic produced the alternative closest to the verified root cause and named the single discriminating piece of evidence to check — and the judge's verdict did not incorporate it. Non-blocking objections were ignored at synthesis time."
+    },
+    {
+      "id": "ev-t5-rounds-not-convergence",
+      "text": "Run csi-typha-appeal-1 (real, trace a5ed9c25…): three rounds of mandatory peer critique did not converge on evidence; critique acted as 'elaborate further'. Forcing engagement with objections does not by itself improve grounding."
+    },
+    {
+      "id": "ev-t5-blocking-mechanism-exists",
+      "text": "Blocking is implementable today: a failing OutputContract kills the step (NoValidProposal), the FSM guard blocks the transition, and retry_policy re-runs the step — i.e., 'objection blocks' can be encoded as policy, not as model behaviour."
+    },
+    {
+      "id": "ev-t5-liveness-risk",
+      "text": "A blocking reviewer creates a liveness risk: with max_attempts retries exhausted the ceremony halts short of a terminal state, and there is no request_more_evidence FSM state yet (future work noted in PR #118). Blocked-forever is a real failure mode to design for."
+    },
+    {
+      "id": "ev-t5-reviewer-cost",
+      "text": "The reviewer in this platform runs on the ephemeral G6 worker: blocking semantics extend worker lifetime (more GPU minutes) while non-blocking lets the reaper stop it sooner. Governance choice has a direct, measurable compute cost."
+    }
+  ]
+}

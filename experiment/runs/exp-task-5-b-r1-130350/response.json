@@ -1,0 +1,18 @@
+{
+  "ceremonyId": "exp-task-5-b-r1-130350",
+  "definitionName": "single_model_evidence_gate",
+  "definitionVersion": "1.0",
+  "finalState": "CLOSED",
+  "completed": true,
+  "steps": [
+    {
+      "stateId": "PROPOSE",
+      "stepId": "propose",
+      "roleId": "PRIMARY_ENGINEER",
+      "status": "COMPLETED",
+      "attempt": 1,
+      "output": "{\n  \"claims\": [\n    {\n      \"text\": \"The evidence shows that ignoring reviewer objections at synthesis time undermines the integrity of the review process, as demonstrated by the skeptic's ignored insights in ev-t5-skeptic-ignored.\",\n      \"evidence_refs\": [\"ev-t5-skeptic-ignored\"]\n    },\n    {\n      \"text\": \"Forced engagement with objections, as seen in ev-t5-rounds-not-convergence, does not necessarily lead to better outcomes and may waste resources without improving grounding.\",\n      \"evidence_refs\": [\"ev-t5-rounds-not-convergence\"]\n    },\n    {\n      \"text\": \"The technical capability to implement blocking behavior exists, as shown in ev-t5-blocking-mechanism-exists, meaning the platform can enforce objection blocking without requiring model-level changes.\",\n      \"evidence_refs\": [\"ev-t5-blocking-mechanism-exists\"]\n    },\n    {\n      \"text\": \"Blocking reviewers introduces a liveness risk because it can halt ceremonies indefinitely if retries are exhausted, as highlighted in ev-t5-liveness-risk.\",\n      \"evidence_refs\": [\"ev-t5-liveness-risk\"]\n    },\n    {\n      \"text\": \"Implementing blocking semantics increases compute costs due to extended worker lifetimes, as documented in ev-t5-reviewer-cost.\",\n      \"evidence_refs\": [\"ev-t5-reviewer-cost\"]\n    }\n  ],\n  \"decision\": \"accept\",\n  \"risks\": [\n    \"Halting ceremonies due to exhausted retries could create indefinite liveness issues.\",\n    \"Increased compute overhead from prolonged worker execution.\"\n  ],\n  \"assumptions\": [\n    \"The current system does not have a mechanism to handle 'blocked-forever' states gracefully.\",\n    \"The cost of compute extension from blocking is a significant enough factor to warrant a policy decision.\",\n    \"The model behavior should not be altered solely for the sake of enforcing objection blocking.\"\n  ]\n}"
+    }
+  ],
+  "mermaidSequence": "sequenceDiagram\n  title single_model_evidence_gate v1.0\n  participant R1 as PRIMARY_ENGINEER\n  Note over R1: State PROPOSE\n  R1-\u003e\u003eR1: propose [primary_b]\n  Note over R1: propose_done -\u003e CLOSED (guards: g_propose)"
+}

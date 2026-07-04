@@ -1,0 +1,18 @@
+{
+  "ceremonyId": "exp-task-1-b-r1-124854",
+  "definitionName": "single_model_evidence_gate",
+  "definitionVersion": "1.0",
+  "finalState": "CLOSED",
+  "completed": true,
+  "steps": [
+    {
+      "stateId": "PROPOSE",
+      "stepId": "propose",
+      "roleId": "PRIMARY_ENGINEER",
+      "status": "COMPLETED",
+      "attempt": 1,
+      "output": "{\n  \"claims\": [\n    {\n      \"text\": \"Final claims must cite at least one evidence reference to prevent arbitrary assertions and anchor decisions in verifiable industry traces.\",\n      \"evidence_refs\": [\"ev-t1-csi-fabrication\"]\n    },\n    {\n      \"text\": \"Allowing non-cited final claims poses Ramsey risk: they may become 'rejected' by statistical means in downstreamochondrial circuitry, framing ceremonies with latent inadequacy.\",\n      \"evidence_refs\": [\"ev-t1-appeal-drift\"]\n    },\n    {\n      \"text\": \"When no evidence is cited, Choreographer's internal validator will issue NoValidProposal; it is deterministic per spec and should thus be trusted for certainty, not excused.\",\n      \"evidence_refs\": [\"ev-t1-validator-pipeline\"]\n    }\n  ],\n  \"decision\": \"accept\",\n  \"risks\": [\n    \"Allowing zero-ref claims might reduce early invitee adoption if perceived as snags; ev-t1-latency-cost warn this path costs retries\",\n    \"Choreographer pipeline does not advertise RejectUnsupported: acceptance may undervalue sparse early evidence; marketing tension likely\"\n  ],\n  \"assumptions\": [\n    \"Peer ceremonies agree common evidence id bucket across themselves; ev-t1-validator-pipeline assumes this portability\",\n    \"evidence_refs act purely as credentials: zero is failure flash point that policy’s fabric (ev-t1-csi-fabrication) must cling to\"\n  ]\n}"
+    }
+  ],
+  "mermaidSequence": "sequenceDiagram\n  title single_model_evidence_gate v1.0\n  participant R1 as PRIMARY_ENGINEER\n  Note over R1: State PROPOSE\n  R1-\u003e\u003eR1: propose [primary_b]\n  Note over R1: propose_done -\u003e CLOSED (guards: g_propose)"
+}

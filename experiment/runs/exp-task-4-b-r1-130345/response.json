@@ -1,0 +1,18 @@
+{
+  "ceremonyId": "exp-task-4-b-r1-130345",
+  "definitionName": "single_model_evidence_gate",
+  "definitionVersion": "1.0",
+  "finalState": "CLOSED",
+  "completed": true,
+  "steps": [
+    {
+      "stateId": "PROPOSE",
+      "stepId": "propose",
+      "roleId": "PRIMARY_ENGINEER",
+      "status": "COMPLETED",
+      "attempt": 1,
+      "output": "{\n  \"claims\": [\n    {\n      \"text\": \"Raw persistence is essential for auditability and reconstruction of complex ceremonies, as demonstrated by the successful reconstruction of run csi-typha-appeal-1 from raw Loki logs.\",\n      \"evidence_refs\": [\"ev-t4-loki-raw-value\"]\n    },\n    {\n      \"text\": \"Summarization introduces significant risks of drift and fabrication, as shown in real runs where summaries incorrectly asserted 'privileged:true' without source confirmation.\",\n      \"evidence_refs\": [\"ev-t4-summary-drift-risk\"]\n    },\n    {\n      \"text\": \"Storage costs for full outputs are negligible compared to compute costs, making raw persistence financially feasible.\",\n      \"evidence_refs\": [\"ev-t4-storage-cost\"]\n    },\n    {\n      \"text\": \"Raw persistence increases audit surface due to potential PII in full outputs, necessitating retention policies for either form.\",\n      \"evidence_refs\": [\"ev-t4-pii-surface\"]\n    },\n    {\n      \"text\": \"Preview truncation in engine logs creates a risk of losing complete outputs if consumers discard the final RunCeremony response.\",\n      \"evidence_refs\": [\"ev-t4-preview-truncation\"]\n    }\n  ],\n  \"decision\": \"accept\",\n  \"risks\": [\n    \"Retaining raw outputs may increase exposure to PII if not properly governed.\",\n    \"The system must ensure that raw outputs are handled securely to mitigate audit surface risks.\"\n  ],\n  \"assumptions\": [\n    \"The system has adequate mechanisms for PII handling and retention policy enforcement.\",\n    \"Raw output persistence does not significantly impact performance or scalability under current load.\"\n  ]\n}"
+    }
+  ],
+  "mermaidSequence": "sequenceDiagram\n  title single_model_evidence_gate v1.0\n  participant R1 as PRIMARY_ENGINEER\n  Note over R1: State PROPOSE\n  R1-\u003e\u003eR1: propose [primary_b]\n  Note over R1: propose_done -\u003e CLOSED (guards: g_propose)"
+}

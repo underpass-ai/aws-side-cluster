@@ -1,0 +1,47 @@
+version: "1.0"
+name: "single_model_freeform"
+description: "Profile A: one model, no evidence gate"
+inputs:
+  optional:
+    - evidence_pack
+outputs:
+  decision:
+    type: object
+states:
+  - id: PROPOSE
+    initial: true
+  - id: CLOSED
+    terminal: true
+transitions:
+  - from: PROPOSE
+    to: CLOSED
+    trigger: propose_done
+    guards:
+      - g_propose
+steps:
+  - id: propose
+    state: PROPOSE
+    handler: primary_a
+    config:
+      agent_kind: vllm
+      provider.model: "qwen3-coder-30b"
+      provider.max_tokens: 1536
+      provider.timeout_secs: 300
+      see_prior: false
+      num_agents: 1
+      prompt: "You are the primary engineer reviewing a technical decision for the Underpass Choreographer platform. QUESTION: Should model responses in ceremonies be persisted raw, summarized, or both? Decide: accept (both raw and summarized), reject (raw only), request_changes (summarized only) or request_more_evidence. Give your decision with supporting claims, risks and assumptions. CRITICAL OUTPUT FORMAT: your ENTIRE response must be raw JSON — the first character of your response must be { and the last must be }. NEVER wrap it in ``` fences. Shape: {\"claims\": [{\"text\": \"...\"}], \"decision\": \"accept|reject|request_changes|request_more_evidence\", \"risks\": [\"...\"], \"assumptions\": [\"...\"]}"
+guards:
+  g_propose:
+    type: automated
+    check: "step_status:propose:COMPLETED"
+roles:
+  - id: PRIMARY_ENGINEER
+    allowed_actions:
+      - propose
+      - propose_done
+timeouts:
+  step_default: 600
+retry_policies:
+  default:
+    max_attempts: 2
+    backoff_seconds: 2

@@ -1,0 +1,18 @@
+{
+  "ceremonyId": "exp-task-3-a-r1-124917",
+  "definitionName": "single_model_freeform",
+  "definitionVersion": "1.0",
+  "finalState": "CLOSED",
+  "completed": true,
+  "steps": [
+    {
+      "stateId": "PROPOSE",
+      "stepId": "propose",
+      "roleId": "PRIMARY_ENGINEER",
+      "status": "COMPLETED",
+      "attempt": 1,
+      "output": "{\"claims\": [{\"text\": \"AWS G6 ephemeral workers are designed for stateless, short-lived tasks where persistence across sessions is not guaranteed.emporal workers have no built-in durability guarantees, so stateful jobs would lose correctness when the worker instance terminates (e.g., gracefully or forcibly).\"}, {\"text\": \"Allowing stateful jobs would deviate from the platform's core tenet of documentability and modeling; maintaining stateful execution in ephemeral runtime is a technical mismatch.\"}, {\"text\": \"Existing ephemeral workloads on G6 with stateful allowances fail validation scans without enforcement protocols and without explicit guards. This is a reliability regression with stateful job correctness.\"}], \"decision\": \"reject\", \"risks\": [\"Worker instances can be terminated unpredictably with the proposed model creator IDs expiring or vanishing if conversion does not map under workflow state. Example scenarios could lead to race condition if the entire worker table is halved unexpectedly.\"], \"assumptions\": [\"The stateful jobs require persistent volume workloads that are incompatible with ephemeral runtime and only support predetermined state resolutions. AWS G6 is expected to stay within tightly scoped standards that provide short-term validation.\"]}"
+    }
+  ],
+  "mermaidSequence": "sequenceDiagram\n  title single_model_freeform v1.0\n  participant R1 as PRIMARY_ENGINEER\n  Note over R1: State PROPOSE\n  R1-\u003e\u003eR1: propose [primary_a]\n  Note over R1: propose_done -\u003e CLOSED (guards: g_propose)"
+}

@@ -1,0 +1,26 @@
+{
+  "id": "task-1",
+  "question": "Should Choreographer reject final claims that carry no evidence_refs? Decide: accept (yes, reject unsupported claims), reject (no, allow them), request_changes or request_more_evidence.",
+  "evidence": [
+    {
+      "id": "ev-t1-csi-fabrication",
+      "text": "Run csi-typha-1 (2026-07-03, real): the forensic agent (30B) asserted 'privileged:true is in the pod spec' as evidence; the case file never contained that claim. The 3B fact-checker then recorded the fabrication as 'Fact', and the LLM judge ruled with confidence 'High' citing it."
+    },
+    {
+      "id": "ev-t1-appeal-drift",
+      "text": "Run csi-typha-appeal-1 (2026-07-03, trace a5ed9c258aa7bd21366f663241b2e7c9): three adversarial peer-review rounds increased fluency but not grounding; councils drifted into fabricated process machinery ('sub-20Hz log noise thresholds', 'semantic normalization layers with PCA/UMAP') unrelated to the evidence."
+    },
+    {
+      "id": "ev-t1-validator-pipeline",
+      "text": "The engine already runs a per-proposal validator pipeline (deliberate.rs attach_validations) and a deterministic rejection path: NoValidProposal{contract_id} fails the deliberation when no proposal satisfies the configured OutputContract."
+    },
+    {
+      "id": "ev-t1-contract-prs",
+      "text": "PR #118 exposes output_contract in ceremony step YAML (contract_id, required_fields, allowed_values, json_schema; unknown keys rejected). PR #119 adds an evidence grounding rule to OutputContract: each claim object must reference evidence_refs that exist in an allowed set, resolvable per-run from the RunCeremony context (allowed_refs_from_context)."
+    },
+    {
+      "id": "ev-t1-latency-cost",
+      "text": "Rejection is not free: a failing step retries per retry_policy (max_attempts) and blocks the ceremony at its guard; there is no request_more_evidence FSM state yet (noted as future work in PR #118)."
+    }
+  ]
+}

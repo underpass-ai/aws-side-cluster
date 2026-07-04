@@ -1,0 +1,18 @@
+{
+  "ceremonyId": "exp-task-1-a-r1",
+  "definitionName": "single_model_freeform",
+  "definitionVersion": "1.0",
+  "finalState": "CLOSED",
+  "completed": true,
+  "steps": [
+    {
+      "stateId": "PROPOSE",
+      "stepId": "propose",
+      "roleId": "PRIMARY_ENGINEER",
+      "status": "COMPLETED",
+      "attempt": 1,
+      "output": "{\"claims\": [{\"text\": \"Rejecting final claims without evidence_refs enforces accountability and reduces the spread of un provable information.\"}], \"decision\": \"accept\", \"risks\": [\"Cost in manual verification could increase if evidence_refs are missing.\"], \"assumptions\": [\"All participants are aware of the importance of supported claims.\"]}"
+    }
+  ],
+  "mermaidSequence": "sequenceDiagram\n  title single_model_freeform v1.0\n  participant R1 as PRIMARY_ENGINEER\n  Note over R1: State PROPOSE\n  R1-\u003e\u003eR1: propose [primary_a]\n  Note over R1: propose_done -\u003e CLOSED (guards: g_propose)"
+}

@@ -1,0 +1,30 @@
+{
+  "decision_id": "exp-task-4-a-r1-124931",
+  "trace_id": "5dadf509bb36b925159ba1ce14b445e",
+  "ceremony_id": "exp-task-4-a-r1-124931",
+  "profile": "single_model_freeform",
+  "task": "task-4",
+  "question": "Should model responses in ceremonies be persisted raw, summarized, or both? Decide: accept (both raw and summarized), reject (raw only), request_changes (summarized only) or request_more_evidence.",
+  "status": "accept",
+  "final_state": "CLOSED",
+  "meeting_execution_seconds": 3.4,
+  "rejected_claims": 0,
+  "worker_lifecycle": {
+    "provider": "aws",
+    "instance_family": "g6.xlarge",
+    "instance_id": "i-084f4b98659f48a19",
+    "ephemeral": true,
+    "state_at_run": "stopped",
+    "launched_at": "2026-07-03T17:07:59+00:00",
+    "idle_shutdown_triggered": false
+  },
+  "observability": {
+    "otel_trace_exported": true,
+    "logs_exported": true,
+    "metrics_exported": true
+  },
+  "final_claims_total": 3,
+  "claims_with_evidence": 0,
+  "claims_without_evidence": 3,
+  "unsupported_claim_escape_count": 3
+}

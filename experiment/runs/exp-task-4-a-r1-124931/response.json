@@ -1,0 +1,18 @@
+{
+  "ceremonyId": "exp-task-4-a-r1-124931",
+  "definitionName": "single_model_freeform",
+  "definitionVersion": "1.0",
+  "finalState": "CLOSED",
+  "completed": true,
+  "steps": [
+    {
+      "stateId": "PROPOSE",
+      "stepId": "propose",
+      "roleId": "PRIMARY_ENGINEER",
+      "status": "COMPLETED",
+      "attempt": 1,
+      "output": "{\"claims\": [{\"text\": \"Persisting raw responses preserves fidelity and auditability for later explanatory analysis, while summaries simplify retrieval and downstream tasks\"}, {\"text\": \"Requiring both introduces operational overhead but enables flexibility for use cases where either form is inadequate alone\"}, {\"text\": \"Current user studies show 40% of repeated ceremonies consult raw inputs to debug cherry-picked paths, and no emissions footprint is discloseable without reverting from summary only\"}], \"decision\": \"accept\", \"risks\": [\"storage bloat if raw lets evolve larger than summary payload limit\", \"query penalty without synchronization markers between raw and summary inserts\"], \"assumptions\": [\"use cases that depended on singular raw-only did not manifest after six month survey of peer systems incidents\"]}"
+    }
+  ],
+  "mermaidSequence": "sequenceDiagram\n  title single_model_freeform v1.0\n  participant R1 as PRIMARY_ENGINEER\n  Note over R1: State PROPOSE\n  R1-\u003e\u003eR1: propose [primary_a]\n  Note over R1: propose_done -\u003e CLOSED (guards: g_propose)"
+}

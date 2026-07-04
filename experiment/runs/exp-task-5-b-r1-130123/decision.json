@@ -1,0 +1,30 @@
+{
+  "decision_id": "exp-task-5-b-r1-130123",
+  "trace_id": "",
+  "ceremony_id": "exp-task-5-b-r1-130123",
+  "profile": "single_model_evidence_gate",
+  "task": "task-5",
+  "question": "Should reviewer objections block final acceptance, or only lower confidence? Decide: accept (objections block until resolved), reject (objections only annotate/lower confidence), request_changes or request_more_evidence.",
+  "status": "ceremony_FAILED",
+  "final_state": null,
+  "meeting_execution_seconds": 0.2,
+  "rejected_claims": 0,
+  "worker_lifecycle": {
+    "provider": "aws",
+    "instance_family": "g6.xlarge",
+    "instance_id": "i-084f4b98659f48a19",
+    "ephemeral": true,
+    "state_at_run": "stopped",
+    "launched_at": "2026-07-03T17:07:59+00:00",
+    "idle_shutdown_triggered": false
+  },
+  "observability": {
+    "otel_trace_exported": false,
+    "logs_exported": true,
+    "metrics_exported": true
+  },
+  "final_claims_total": 0,
+  "claims_with_evidence": 0,
+  "claims_without_evidence": 0,
+  "unsupported_claim_escape_count": 0
+}

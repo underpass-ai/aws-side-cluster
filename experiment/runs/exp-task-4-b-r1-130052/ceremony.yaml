@@ -1,0 +1,57 @@
+version: "1.0"
+name: "single_model_evidence_gate"
+description: "Profile B: evidence pack + deterministic contract gate"
+inputs:
+  optional:
+    - evidence_pack
+outputs:
+  decision:
+    type: object
+states:
+  - id: PROPOSE
+    initial: true
+  - id: CLOSED
+    terminal: true
+transitions:
+  - from: PROPOSE
+    to: CLOSED
+    trigger: propose_done
+    guards:
+      - g_propose
+steps:
+  - id: propose
+    state: PROPOSE
+    handler: primary_b
+    config:
+      agent_kind: vllm
+      provider.model: "qwen3-coder-30b"
+      provider.max_tokens: 1536
+      provider.timeout_secs: 300
+      see_prior: false
+      num_agents: 1
+      output_contract:
+        contract_id: evidence-bound-decision
+        format: json_object
+        required_fields: [claims, decision]
+        allowed_values:
+          decision: [accept, reject, request_changes, request_more_evidence]
+        evidence:
+          claims_field: claims
+          refs_field: evidence_refs
+          allowed_refs_from_context: evidence_pack
+      prompt: "You are the primary engineer reviewing a technical decision for the Underpass Choreographer platform. QUESTION: Should model responses in ceremonies be persisted raw, summarized, or both? Decide: accept (both raw and summarized), reject (raw only), request_changes (summarized only) or request_more_evidence.\nEVIDENCE PACK (the ONLY citable evidence; cite by id in evidence_refs):\n- [ev-t4-loki-raw-value] The full decision timeline of run csi-typha-appeal-1 was reconstructed from raw Loki logs after the GPU worker was stopped: 78 events including every draft, all 12 peer critiques with round numbers, and every validator verdict. Raw persistence made the reconstruction possible.\n- [ev-t4-preview-truncation] Engine logs store proposal previews truncated (content_preview), not full outputs; the full winner content only travels in the RunCeremony response. A consumer that discards that response loses the only complete copy.\n- [ev-t4-storage-cost] The complete evidence of a 31-LLM-call ceremony (78 log events + 8 spans + response JSON) measures in the tens of kilobytes; the GPU compute that produced it ran for ~3.5 minutes on two nodes. Evidence storage cost is negligible relative to compute.\n- [ev-t4-summary-drift-risk] Runs csi-typha-1 and appeal (real) showed models summarizing prior context with drift and fabrication (a summary asserted 'privileged:true' that no source contained). LLM-generated summaries are lossy AND can introduce false statements.\n- [ev-t4-pii-surface] Raw persistence increases the audit surface: full outputs may contain sensitive fragments of prompts/evidence; summaries can redact. Retention policy applies to whichever form is kept.\nEvery claim MUST cite at least one evidence id from the pack in its evidence_refs; claims you cannot support, leave out. CRITICAL OUTPUT FORMAT: your ENTIRE response must be raw JSON — the first character of your response must be { and the last must be }. NEVER wrap it in ``` fences. Shape: {\"claims\": [{\"text\": \"...\", \"evidence_refs\": [\"ev-...\"]}], \"decision\": \"accept|reject|request_changes|request_more_evidence\", \"risks\": [\"...\"], \"assumptions\": [\"...\"]}"
+guards:
+  g_propose:
+    type: automated
+    check: "step_status:propose:COMPLETED"
+roles:
+  - id: PRIMARY_ENGINEER
+    allowed_actions:
+      - propose
+      - propose_done
+timeouts:
+  step_default: 600
+retry_policies:
+  default:
+    max_attempts: 2
+    backoff_seconds: 2

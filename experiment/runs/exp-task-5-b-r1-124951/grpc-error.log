@@ -1,0 +1,3 @@
+ERROR:
+  Code: FailedPrecondition
+  Message: invariant violated: ceremony step did not complete successfully

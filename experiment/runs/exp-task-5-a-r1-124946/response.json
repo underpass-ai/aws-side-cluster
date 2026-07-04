@@ -1,0 +1,18 @@
+{
+  "ceremonyId": "exp-task-5-a-r1-124946",
+  "definitionName": "single_model_freeform",
+  "definitionVersion": "1.0",
+  "finalState": "CLOSED",
+  "completed": true,
+  "steps": [
+    {
+      "stateId": "PROPOSE",
+      "stepId": "propose",
+      "roleId": "PRIMARY_ENGINEER",
+      "status": "COMPLETED",
+      "attempt": 1,
+      "output": "{\"claims\": [{\"text\": \"Objections should block final acceptance because Underpass Choreographer is a high-stakes coordination system where unresolved concerns could escalate into operational failures.\"}, {\"text\": \"Lowered confidence alone risks silent propagation of albeit-A issues that might compound under load.\"}, {\"text\": \"Since all reviewing parties are bound by the ceremony charter to implement checks systematically, simpler mediation is preferable to retroactive compensation of latent flaws.\"}], \"decision\": \"accept\", \"risks\": [\"Delayed releases\", \"AAA association bias championship\", \"Unclearmaß potential for operations\"], \"assumptions\": [\"Peers understand ceremony charter discipline\", \"Objections are reviewed in full before blocking\", \"Global ops team agrees with charter intent\"]}"
+    }
+  ],
+  "mermaidSequence": "sequenceDiagram\n  title single_model_freeform v1.0\n  participant R1 as PRIMARY_ENGINEER\n  Note over R1: State PROPOSE\n  R1-\u003e\u003eR1: propose [primary_a]\n  Note over R1: propose_done -\u003e CLOSED (guards: g_propose)"
+}

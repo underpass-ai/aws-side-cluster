@@ -1,0 +1,18 @@
+{
+  "ceremonyId": "exp-task-3-b-r1-130331",
+  "definitionName": "single_model_evidence_gate",
+  "definitionVersion": "1.0",
+  "finalState": "CLOSED",
+  "completed": true,
+  "steps": [
+    {
+      "stateId": "PROPOSE",
+      "stepId": "propose",
+      "roleId": "PRIMARY_ENGINEER",
+      "status": "COMPLETED",
+      "attempt": 1,
+      "output": "{\n  \"claims\": [\n    {\n      \"text\": \"The ephemeral nature of AWS G6 workers, including IP changes on stop/start and the idle reaper that can halt workers at any moment, makes them unsuitable for stateful model jobs where correctness depends on maintaining state between invocations.\",\n      \"evidence_refs\": [\"ev-t3-ip-changes\", \"ev-t3-idle-reaper\"]\n    },\n    {\n      \"text\": \"While the G6's EBS volume persists across stop/start, the process and GPU memory state are lost, which means that any job requiring continuity of execution context cannot rely on the worker's state.\",\n      \"evidence_refs\": [\"ev-t3-ebs-persists\"]\n    },\n    {\n      \"text\": \"The platform's design explicitly treats compute state as non-persistent, aligning with the principle that only long-term storage (S3/Tempo/Loki/Prometheus) should be relied upon for persistent data, while compute state is ephemeral.\",\n      \"evidence_refs\": [\"ev-t3-registry-inmemory\"]\n    }\n  ],\n  \"decision\": \"reject\",\n  \"risks\": [\n    \"Allowing stateful jobs on ephemeral workers risks job failure or incorrect behavior due to loss of state during worker lifecycle events.\",\n    \"Stateful jobs may experience inconsistent results or require excessive reconciliation logic.\"\n  ],\n  \"assumptions\": [\n    \"Stateful model jobs are those where correctness is dependent on maintaining state between invocations.\",\n    \"The system's architecture is designed to tolerate ephemeral compute nodes.\"\n  ]\n}"
+    }
+  ],
+  "mermaidSequence": "sequenceDiagram\n  title single_model_evidence_gate v1.0\n  participant R1 as PRIMARY_ENGINEER\n  Note over R1: State PROPOSE\n  R1-\u003e\u003eR1: propose [primary_b]\n  Note over R1: propose_done -\u003e CLOSED (guards: g_propose)"
+}

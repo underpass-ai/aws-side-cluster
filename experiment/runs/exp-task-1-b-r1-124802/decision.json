@@ -1,0 +1,30 @@
+{
+  "decision_id": "exp-task-1-b-r1-124802",
+  "trace_id": "8c00873a37f18745893d31d591738891",
+  "ceremony_id": "exp-task-1-b-r1-124802",
+  "profile": "single_model_evidence_gate",
+  "task": "task-1",
+  "question": "Should Choreographer reject final claims that carry no evidence_refs? Decide: accept (yes, reject unsupported claims), reject (no, allow them), request_changes or request_more_evidence.",
+  "status": "accept",
+  "final_state": "CLOSED",
+  "meeting_execution_seconds": 4.9,
+  "rejected_claims": 0,
+  "worker_lifecycle": {
+    "provider": "aws",
+    "instance_family": "g6.xlarge",
+    "instance_id": "i-084f4b98659f48a19",
+    "ephemeral": true,
+    "state_at_run": "stopped",
+    "launched_at": "2026-07-03T17:07:59+00:00",
+    "idle_shutdown_triggered": false
+  },
+  "observability": {
+    "otel_trace_exported": true,
+    "logs_exported": true,
+    "metrics_exported": true
+  },
+  "final_claims_total": 2,
+  "claims_with_evidence": 2,
+  "claims_without_evidence": 0,
+  "unsupported_claim_escape_count": 0
+}

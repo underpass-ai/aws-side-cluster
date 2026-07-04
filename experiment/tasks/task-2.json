@@ -1,0 +1,26 @@
+{
+  "id": "task-2",
+  "question": "Should the final judge of a ceremony be a deterministic policy engine or an LLM-as-judge? Decide: accept (deterministic policy), reject (LLM-as-judge), request_changes or request_more_evidence.",
+  "evidence": [
+    {
+      "id": "ev-t2-judge-high-on-fabrication",
+      "text": "Run csi-typha-1 (real): the LLM judge ruled with confidence 'High' explicitly citing evidence that another agent had fabricated ('privileged:true in the pod spec' — absent from the case file). The LLM judge did not detect the fabrication."
+    },
+    {
+      "id": "ev-t2-judge-calibration-appeal",
+      "text": "Run csi-typha-appeal-1 (real): when confronted with its earlier failure, the LLM judge lowered its confidence to 'Medium' and vacated the original verdict — LLM judges can improve with better context, but calibration arrived only after the damage."
+    },
+    {
+      "id": "ev-t2-deterministic-path-exists",
+      "text": "The engine ships a deterministic rejection path: OutputContract validation in the deliberation pipeline ends in NoValidProposal{contract_id} with production validators (verified e2e in PR #118's test where prose-only proposals die against a ruling-contract)."
+    },
+    {
+      "id": "ev-t2-judge-token-cost",
+      "text": "The LLM judge consumes provider tokens on every deliberation (judge model invocations recorded in engine metrics); a policy gate evaluates schema and evidence refs without any model call."
+    },
+    {
+      "id": "ev-t2-judge-value",
+      "text": "The engine's judge selects winners by intrinsic quality instead of arbitrary tie-break (CHOREO_JUDGE_ENABLED); a pure policy gate cannot rank two proposals that both satisfy the contract."
+    }
+  ]
+}

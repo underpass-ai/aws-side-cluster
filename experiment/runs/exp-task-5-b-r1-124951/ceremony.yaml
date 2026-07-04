@@ -1,0 +1,57 @@
+version: "1.0"
+name: "single_model_evidence_gate"
+description: "Profile B: evidence pack + deterministic contract gate"
+inputs:
+  optional:
+    - evidence_pack
+outputs:
+  decision:
+    type: object
+states:
+  - id: PROPOSE
+    initial: true
+  - id: CLOSED
+    terminal: true
+transitions:
+  - from: PROPOSE
+    to: CLOSED
+    trigger: propose_done
+    guards:
+      - g_propose
+steps:
+  - id: propose
+    state: PROPOSE
+    handler: primary_b
+    config:
+      agent_kind: vllm
+      provider.model: "qwen3-coder-30b"
+      provider.max_tokens: 1536
+      provider.timeout_secs: 300
+      see_prior: false
+      num_agents: 1
+      output_contract:
+        contract_id: evidence-bound-decision
+        format: json_object
+        required_fields: [claims, decision]
+        allowed_values:
+          decision: [accept, reject, request_changes, request_more_evidence]
+        evidence:
+          claims_field: claims
+          refs_field: evidence_refs
+          allowed_refs_from_context: evidence_pack
+      prompt: "You are the primary engineer reviewing a technical decision for the Underpass Choreographer platform. QUESTION: Should reviewer objections block final acceptance, or only lower confidence? Decide: accept (objections block until resolved), reject (objections only annotate/lower confidence), request_changes or request_more_evidence.\nEVIDENCE PACK (the ONLY citable evidence; cite by id in evidence_refs):\n- [ev-t5-skeptic-ignored] Run csi-typha-1 (real): the skeptic produced the alternative closest to the verified root cause and named the single discriminating piece of evidence to check — and the judge's verdict did not incorporate it. Non-blocking objections were ignored at synthesis time.\n- [ev-t5-rounds-not-convergence] Run csi-typha-appeal-1 (real, trace a5ed9c25…): three rounds of mandatory peer critique did not converge on evidence; critique acted as 'elaborate further'. Forcing engagement with objections does not by itself improve grounding.\n- [ev-t5-blocking-mechanism-exists] Blocking is implementable today: a failing OutputContract kills the step (NoValidProposal), the FSM guard blocks the transition, and retry_policy re-runs the step — i.e., 'objection blocks' can be encoded as policy, not as model behaviour.\n- [ev-t5-liveness-risk] A blocking reviewer creates a liveness risk: with max_attempts retries exhausted the ceremony halts short of a terminal state, and there is no request_more_evidence FSM state yet (future work noted in PR #118). Blocked-forever is a real failure mode to design for.\n- [ev-t5-reviewer-cost] The reviewer in this platform runs on the ephemeral G6 worker: blocking semantics extend worker lifetime (more GPU minutes) while non-blocking lets the reaper stop it sooner. Governance choice has a direct, measurable compute cost.\nEvery claim MUST cite at least one evidence id from the pack in its evidence_refs; claims you cannot support, leave out. CRITICAL OUTPUT FORMAT: your ENTIRE response must be raw JSON — the first character of your response must be { and the last must be }. NEVER wrap it in ``` fences. Shape: {\"claims\": [{\"text\": \"...\", \"evidence_refs\": [\"ev-...\"]}], \"decision\": \"accept|reject|request_changes|request_more_evidence\", \"risks\": [\"...\"], \"assumptions\": [\"...\"]}"
+guards:
+  g_propose:
+    type: automated
+    check: "step_status:propose:COMPLETED"
+roles:
+  - id: PRIMARY_ENGINEER
+    allowed_actions:
+      - propose
+      - propose_done
+timeouts:
+  step_default: 600
+retry_policies:
+  default:
+    max_attempts: 2
+    backoff_seconds: 2

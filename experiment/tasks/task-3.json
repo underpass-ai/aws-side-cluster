@@ -1,0 +1,26 @@
+{
+  "id": "task-3",
+  "question": "Should AWS G6 ephemeral workers be allowed to execute stateful model jobs (jobs whose correctness depends on state kept on the worker between invocations)? Decide: accept (allow stateful), reject (stateless only), request_changes or request_more_evidence.",
+  "evidence": [
+    {
+      "id": "ev-t3-ip-changes",
+      "text": "Every stop/start of the G6 changes its public IP; the control plane must resync the WireGuard endpoint (wg-sync). Verified across multiple starts on 2026-07-03/04 (endpoints 18.101.186.131, 15.216.147.179, 15.217.12.130)."
+    },
+    {
+      "id": "ev-t3-idle-reaper",
+      "text": "A reaper stops the G6 after 300s without vLLM requests (Prometheus vllm:num_requests_running == 0 sustained); shutdown can happen at any moment between jobs and is logged with timestamps. The shutdown policy is part of the platform design, not an accident."
+    },
+    {
+      "id": "ev-t3-ebs-persists",
+      "text": "The G6's EBS volume (100GB: model weights, container images) persists across stop/start — disk state survives, but process/GPU memory state does not."
+    },
+    {
+      "id": "ev-t3-capacity-scarce",
+      "text": "g6 capacity in eu-south-2a is scarce: starts fail with capacity errors and need retries (observed repeatedly; first start attempt failed on 3 of 4 session starts on 2026-07-03/04). A worker may not come back promptly after a stop."
+    },
+    {
+      "id": "ev-t3-registry-inmemory",
+      "text": "The choreographer's agent/council registry is in-memory per pod: engine-side state also does not survive restarts. The platform's persistence model is: evidence persists (S3/Tempo/Loki/Prometheus), compute state does not."
+    }
+  ]
+}
