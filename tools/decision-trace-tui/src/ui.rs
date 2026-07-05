@@ -76,7 +76,14 @@ pub fn draw(f: &mut Frame, st: &AppState) {
         .constraints([Constraint::Percentage(52), Constraint::Percentage(48)])
         .split(outer[1]);
 
-    draw_waterfall(f, cols[0], st);
+    // Izquierda: timeline de fases arriba (alto justo) y raw spans debajo.
+    let phases_h = (st.rec.phases.len() as u16 + 3).max(4);
+    let left = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(phases_h), Constraint::Min(4)])
+        .split(cols[0]);
+    draw_waterfall(f, left[0], st);
+    draw_spans(f, left[1], st);
 
     let right = Layout::default()
         .direction(Direction::Vertical)
@@ -108,7 +115,7 @@ fn draw_waterfall(f: &mut Frame, area: Rect, st: &AppState) {
         TSpan::styled("TIME", Style::default().fg(DIM).add_modifier(Modifier::BOLD)),
     ]))];
 
-    items.extend(rec.phases.iter().skip(st.span_scroll).map(|p| {
+    items.extend(rec.phases.iter().map(|p| {
         let color = BAR_COLORS[(p.idx - 1) % BAR_COLORS.len()];
         let off = ((p.start_offset_ms / total) * bar_w as f64) as usize;
         let len = (((p.duration_ms / total) * bar_w as f64).ceil() as usize)
@@ -147,7 +154,81 @@ fn draw_waterfall(f: &mut Frame, area: Rect, st: &AppState) {
             Style::default().fg(DIM),
         ),
     ];
+    f.render_widget(List::new(items).block(panel(title, false)), area);
+}
+
+/// Waterfall crudo: todos los spans del trace, con su jerarquia. Rellena la
+/// mitad izquierda y deja ver la fontaneria (rpc/prepare/...) que la vista
+/// de fases esconde a proposito. Los spans `deliberate` heredan el color de
+/// su fase; el resto va apagado.
+fn draw_spans(f: &mut Frame, area: Rect, st: &AppState) {
+    let rec = &st.rec;
+    let total = rec.trace_duration_ms.max(1.0);
+    let t0 = rec.spans.iter().map(|s| s.start_ns).min().unwrap_or(0);
+    let inner_w = area.width.saturating_sub(2) as usize;
+    let name_w = 34usize;
+    let dur_w = 10usize;
+    let bar_w = inner_w.saturating_sub(name_w + dur_w + 2).clamp(10, 60);
+
+    let mut deliberate_seen = 0usize;
+    let items: Vec<ListItem> = rec
+        .spans
+        .iter()
+        .map(|s| {
+            let is_phase = s.name == "deliberate";
+            let color = if is_phase {
+                let c = BAR_COLORS[deliberate_seen % BAR_COLORS.len()];
+                deliberate_seen += 1;
+                c
+            } else {
+                Color::Rgb(70, 78, 96)
+            };
+            let start_ms = (s.start_ns.saturating_sub(t0)) as f64 / 1_000_000.0;
+            let off = ((start_ms / total) * bar_w as f64) as usize;
+            let len = (((s.duration_ms() / total) * bar_w as f64).ceil() as usize)
+                .clamp(1, bar_w.saturating_sub(off).max(1));
+            let mut label = format!("{}{}", "· ".repeat(s.depth), s.name);
+            if label.chars().count() > name_w {
+                label = label.chars().take(name_w - 1).collect::<String>() + "…";
+            }
+            ListItem::new(Line::from(vec![
+                TSpan::styled(
+                    format!(" {label:<name_w$}"),
+                    Style::default().fg(if is_phase { FG } else { DIM }),
+                ),
+                TSpan::raw(" ".repeat(off)),
+                TSpan::styled("▆".repeat(len), Style::default().fg(color)),
+                TSpan::raw(" ".repeat(bar_w.saturating_sub(off + len))),
+                TSpan::styled(
+                    format!(" {:>7.0}ms", s.duration_ms()),
+                    Style::default().fg(if is_phase { FG } else { DIM }),
+                ),
+            ]))
+        })
+        .skip(st.span_scroll)
+        .collect();
+
+    let title = vec![
+        TSpan::styled(" ≡ raw spans ", Style::default().fg(BLUE).add_modifier(Modifier::BOLD)),
+        TSpan::styled(
+            format!("Tempo · {} spans, plumbing included ", rec.spans.len()),
+            Style::default().fg(DIM),
+        ),
+    ];
     f.render_widget(List::new(items).block(panel(title, !st.focus_logs)), area);
+}
+
+fn fmt_utc(ts: &str) -> String {
+    chrono::DateTime::parse_from_rfc3339(ts)
+        .map(|d| d.with_timezone(&chrono::Utc).format("%Y-%m-%d %H:%M:%SZ").to_string())
+        .unwrap_or_else(|_| ts.to_owned())
+}
+
+fn lifetime_human(launched: &str, stopped: &str) -> Option<String> {
+    let l = chrono::DateTime::parse_from_rfc3339(launched).ok()?;
+    let s = chrono::DateTime::parse_from_rfc3339(stopped).ok()?;
+    let secs = (s - l).num_seconds().max(0);
+    Some(format!("{}h{:02}m", secs / 3600, (secs % 3600) / 60))
 }
 
 fn badge(status: &str) -> (String, Color) {
@@ -202,7 +283,7 @@ fn draw_artifact(f: &mut Frame, area: Rect, st: &AppState) {
     if let Some(w) = &a.worker_lifecycle {
         lines.push(Line::from(vec![
             label("worker"),
-            TSpan::styled("☁ ", Style::default().fg(BLUE)),
+            TSpan::styled(format!("{} ", w.provider), Style::default().fg(BLUE)),
             TSpan::styled(
                 format!("{} {} ", w.instance_family, w.instance_id),
                 Style::default().fg(FG),
@@ -212,10 +293,16 @@ fn draw_artifact(f: &mut Frame, area: Rect, st: &AppState) {
                 Style::default().fg(if w.idle_shutdown_triggered { MAGENTA } else { DIM }).add_modifier(Modifier::BOLD),
             ),
         ]));
+        // El artifact puede traer offsets distintos (p.ej. +00:00 y +02:00);
+        // aqui todo a UTC para que la vida del worker se lea de un vistazo.
         if let (Some(l), Some(s)) = (&w.launched_at, &w.stopped_at) {
             lines.push(Line::from(vec![
                 label("lifetime"),
-                TSpan::styled(format!("{l}  ➜  {s}"), Style::default().fg(DIM)),
+                TSpan::styled(format!("{}  ➜  {}", fmt_utc(l), fmt_utc(s)), Style::default().fg(DIM)),
+                TSpan::styled(
+                    lifetime_human(l, s).map(|d| format!("  · alive {d}")).unwrap_or_default(),
+                    Style::default().fg(FG),
+                ),
             ]));
         }
     }
@@ -248,7 +335,39 @@ fn event_decor(msg: &str, detail: &str) -> (&'static str, Color) {
     }
 }
 
+/// Word-wrap simple para el detalle de un evento: primer trozo en la misma
+/// linea del mensaje, continuaciones con sangria colgante. Nada de recortes
+/// mudos contra el borde del panel.
+fn wrap_detail(text: &str, first: usize, cont: usize) -> Vec<String> {
+    let mut out: Vec<String> = vec![String::new()];
+    let mut avail = first.max(1);
+    for word in text.split_whitespace() {
+        let cur = out.last_mut().unwrap();
+        let need = if cur.is_empty() { word.chars().count() } else { word.chars().count() + 1 };
+        if cur.chars().count() + need <= avail || cur.is_empty() && word.chars().count() <= avail {
+            if !cur.is_empty() {
+                cur.push(' ');
+            }
+            cur.push_str(word);
+        } else if word.chars().count() <= cont {
+            out.push(word.to_owned());
+            avail = cont.max(1);
+        } else {
+            // Palabra mas larga que la linea: trocear en duro.
+            let mut rest: Vec<char> = word.chars().collect();
+            while !rest.is_empty() {
+                let take = cont.max(1).min(rest.len());
+                out.push(rest.drain(..take).collect());
+            }
+            avail = cont.max(1);
+        }
+    }
+    out
+}
+
 fn draw_events(f: &mut Frame, area: Rect, st: &AppState) {
+    let inner_w = area.width.saturating_sub(2) as usize;
+    let indent = 12usize; // " HH:MM:SS " + icono: donde arranca el mensaje
     let items: Vec<ListItem> = st
         .rec
         .events
@@ -258,15 +377,38 @@ fn draw_events(f: &mut Frame, area: Rect, st: &AppState) {
             let ts = e.ts.get(11..19).unwrap_or(&e.ts);
             let (icon, color) = event_decor(&e.message, &e.detail);
             let step_end = e.message == "ceremony step deliberation completed";
-            ListItem::new(Line::from(vec![
+            let msg_w = e.message.chars().count();
+            let first_avail = inner_w.saturating_sub(indent + msg_w + 2);
+            let cont_avail = inner_w.saturating_sub(indent).max(10);
+            let mut chunks = if e.detail.is_empty() {
+                Vec::new()
+            } else if first_avail < 12 {
+                let mut c = wrap_detail(&e.detail, cont_avail, cont_avail);
+                c.insert(0, String::new());
+                c
+            } else {
+                wrap_detail(&e.detail, first_avail, cont_avail)
+            };
+
+            let mut lines = vec![Line::from(vec![
                 TSpan::styled(format!(" {ts} "), Style::default().fg(DIM)),
                 TSpan::styled(format!("{icon} "), Style::default().fg(color).add_modifier(Modifier::BOLD)),
                 TSpan::styled(
                     e.message.clone(),
                     Style::default().fg(color).add_modifier(if step_end { Modifier::BOLD } else { Modifier::empty() }),
                 ),
-                TSpan::styled(format!("  {}", e.detail), Style::default().fg(FG)),
-            ]))
+                TSpan::styled(
+                    if chunks.is_empty() { String::new() } else { format!("  {}", chunks.remove(0)) },
+                    Style::default().fg(FG),
+                ),
+            ])];
+            lines.extend(chunks.into_iter().map(|c| {
+                Line::from(vec![
+                    TSpan::raw(" ".repeat(indent)),
+                    TSpan::styled(c, Style::default().fg(FG)),
+                ])
+            }));
+            ListItem::new(lines)
         })
         .collect();
     let title = vec![

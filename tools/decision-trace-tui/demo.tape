@@ -11,8 +11,17 @@ Set Height 950
 Set Theme "Dracula"
 Set Padding 12
 
+# Endpoints por env var y fuera de camara: las IPs del cluster no pintan
+# nada en el GIF. (El binario lee TEMPO_URL/LOKI_URL via clap env.)
+Hide
+Type "export TEMPO_URL=http://10.106.230.90:3200 LOKI_URL=http://10.105.22.128:3100"
+Enter
+Type "clear"
+Enter
+Show
+
 # Arranque: se ve el comando real (reproducibilidad para el lector)
-Type "./target/release/decision-trace-tui ../../experiment/runs/exp-task-1-c-r1-131151/decision.json --tempo http://10.106.230.90:3200 --loki http://10.105.22.128:3100"
+Type "./target/release/decision-trace-tui ../../experiment/runs/exp-task-1-c-r1-131151/decision.json"
 Sleep 1.5s
 Enter
 Sleep 4s
