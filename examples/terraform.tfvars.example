@@ -69,3 +69,7 @@ restore_days = 1
 tags = {
   Environment = "poc"
 }
+
+# IP publica del borde de casa para la zona Route53 privada (EC2->PC via
+# WireGuard). Vacio = no crear el registro. Valor real: solo en tu tfvars local.
+wg_endpoint_public_ip = "203.0.113.10"

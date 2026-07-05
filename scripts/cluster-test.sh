@@ -6,6 +6,8 @@
 # Uso:  AWS_REGION=eu-south-2 scripts/cluster-test.sh
 set -uo pipefail
 cd "$(dirname "$0")/.."
+# Valores host-specific (IP publica de casa, etc.) fuera del repo: .env.local
+[ -f .env.local ] && . ./.env.local
 export AWS_REGION="${AWS_REGION:-eu-south-2}" AWS_DEFAULT_REGION="${AWS_REGION:-eu-south-2}"
 GW="${GW:-http://127.0.0.1:18080}"
 K="kubectl --request-timeout=8s"
@@ -77,13 +79,18 @@ chk "worker<->worker (.242 backend remoto)" "$(echo "$l" | grep -oE 'x242=[0-9]+
 $K -n default delete pod ctest --now >/dev/null 2>&1
 
 LOG "===== 7) DNS privado (hostNetwork + dnsPolicy:Default = resolver VPC) ====="
-$K -n default delete pod dnstest --ignore-not-found --now >/dev/null 2>&1
-$K -n default run dnstest --image=busybox:1.36 --restart=Never \
-  --overrides='{"spec":{"hostNetwork":true,"dnsPolicy":"Default","nodeSelector":{"underpass.ai/worker-index":"1"}}}' \
-  --command -- sh -c 'nslookup aws-vpc-wg.underpassai.com 2>/dev/null | grep -oE "90\.175\.75\.123" | head -1 && echo dns=ok || echo dns=fail' >/dev/null 2>&1
-$K -n default wait --for=jsonpath='{.status.phase}'=Succeeded pod/dnstest --timeout=60s >/dev/null 2>&1 || true
-chk "DNS privado aws-vpc-wg -> 203.0.113.10" "$($K -n default logs dnstest 2>/dev/null | grep -oE 'dns=[a-z]+' | cut -d= -f2)" "ok"
-$K -n default delete pod dnstest --now >/dev/null 2>&1
+if [ -z "${WG_HOME_IP:-}" ]; then
+  no "DNS privado aws-vpc-wg" "WG_HOME_IP no definido (crear .env.local, ver .env.local.example)"
+else
+  WG_HOME_IP_RE=$(printf '%s' "$WG_HOME_IP" | sed 's/\./\\\\./g')
+  $K -n default delete pod dnstest --ignore-not-found --now >/dev/null 2>&1
+  $K -n default run dnstest --image=busybox:1.36 --restart=Never \
+    --overrides='{"spec":{"hostNetwork":true,"dnsPolicy":"Default","nodeSelector":{"underpass.ai/worker-index":"1"}}}' \
+    --command -- sh -c 'nslookup aws-vpc-wg.underpassai.com 2>/dev/null | grep -oE "'"$WG_HOME_IP_RE"'" | head -1 && echo dns=ok || echo dns=fail' >/dev/null 2>&1
+  $K -n default wait --for=jsonpath='{.status.phase}'=Succeeded pod/dnstest --timeout=60s >/dev/null 2>&1 || true
+  chk "DNS privado aws-vpc-wg -> $WG_HOME_IP" "$($K -n default logs dnstest 2>/dev/null | grep -oE 'dns=[a-z]+' | cut -d= -f2)" "ok"
+  $K -n default delete pod dnstest --now >/dev/null 2>&1
+fi
 
 echo
 LOG "===== RESULTADO: ${PASS} PASS / ${FAIL} FAIL ====="

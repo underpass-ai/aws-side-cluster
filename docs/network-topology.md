@@ -42,8 +42,9 @@ distintas: `underpass.ai/node-pool=aws-poc` (t3.micro genéricos) y
    tras cada `start-instances` de la g6. Funciona **detrás de NAT/CGNAT** porque el PC
    inicia saliente. Requiere `sudoers` NOPASSWD para `wg` (`/etc/sudoers.d/aws-side-wg`).
 2. **EC2→PC (secundario).** El EC2 resuelve `aws-vpc-wg.underpassai.com` en una
-   zona Route53 **privada** (VPC-scoped, `terraform/dns.tf`) → `203.0.113.10:51820`
-   (borde de casa). Requiere que el router reenvíe **UDP/51820 → 192.168.1.56**.
+   zona Route53 **privada** (VPC-scoped, `terraform/dns.tf`) → `<ip-publica-de-casa>:51820`
+   (borde de casa; el valor real vive en `.env.local`, gitignoreado). Requiere que
+   el router reenvíe **UDP/51820 → 192.168.1.56**.
    Si no llega, el camino 1 establece el túnel igual (WireGuard roaming). El
    nombre vive en zona privada para **no tocar la zona pública** de la web.
 

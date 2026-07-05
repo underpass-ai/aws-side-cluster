@@ -7,7 +7,7 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/home/USER/ai/developents/aws-side-cluster/scripts/setup-pc-network.sh
+ExecStart=@REPO_DIR@/scripts/setup-pc-network.sh
 
 [Install]
 WantedBy=multi-user.target
