@@ -2,6 +2,16 @@
 
 POC para extender un cluster Kubernetes local con workers en AWS EC2. El control-plane queda en la workstation local (con 4 GPUs sirviendo LLMs) y los nodos EC2 se conectan por WireGuard. Tres fases validadas end-to-end: red y lifecycle de workers (fase 1), worker GPU con vLLM en la nube (fase 2), y ceremonias multimodelo hibridas local+AWS con observabilidad completa (fase 3).
 
+## Articulo principal
+
+Canonical write-up:
+[I let my GPU workers shut themselves down after five minutes. Their decisions still had to be auditable.](https://underpassai.com/articles/disposable-compute-persistent-evidence/)
+
+Este repo contiene la parte reproducible del experimento: Terraform, charts de
+Helm, scripts operativos, dashboard de Grafana, runner A/B/C, artefactos de
+decision y la TUI usada para reconstruir una decision despues de apagar el
+worker GPU.
+
 ## Estado Validado
 
 Hitos: 2026-06-25 fase 1 (red/workers/gateway) · 2026-06-26 wake rootless, join en Terraform, reachability MetalLB, DNS privado (`scripts/cluster-test.sh`) · 2026-06-28 4 vLLM en las GPUs locales · 2026-07-02 worker GPU x86/L4 validado (el T4G/arm64 resulto inviable: torch cu130 requiere sm_80+) · 2026-07-03 ceremonias multimodelo hibridas + time-slicing (2 modelos en la L4) + observabilidad (Prometheus/Tempo/Loki) + auto-stop por idle verificado.
