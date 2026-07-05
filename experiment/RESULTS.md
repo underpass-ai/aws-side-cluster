@@ -6,18 +6,26 @@ Loki. Nada inventado.
 
 ## Tabla principal (5 tareas × 3 perfiles, 1 rep)
 
-| Perfil | Modelos | Evidencia | Juez determinista | Claims | Con evidencia | **Escaped** | Trace sobrevive shutdown | Decisiones |
+| Perfil | Modelos | Evidencia | Juez determinista | Claims | Con ref válida | **Escaped** | Trace sobrevive shutdown | Decisiones |
 |---|---|---|---|---|---|---|---|---|
 | A `single_model_freeform` | 1 (qwen3-coder local) | no | no | 14 | 0 | **14** | sí | 4 accept · 1 reject |
 | B `single_model_evidence_gate` | 1 | sí | sí | 18 | 18 | **0** | sí | 4 accept · 1 reject |
 | C `evidence_bound_review` | 2 (+phi4 en la L4) | sí | sí | 18 | 18 | **0** | sí | 3 accept · **2 reject** |
 
 - **Criterio de éxito `unsupported_claim_escape_count == 0`: cumplido en B y C
-  al 100%** (0/36 claims). En el baseline A escaparon TODAS (14/14).
+  al 100%** (0/36 claims sin ref válida). En el baseline A escaparon TODAS
+  las claims sin ref (14/14).
 - **El reviewer del worker efímero cambió decisiones**: task-1 con la misma
   evidencia fue `accept` en B y `reject` en C tras las objeciones del
   escéptico. El G6 no decora: decide.
 - Trazas únicas por decisión (15 trace_ids), verificables en Tempo.
+- La tabla usa las **15 runs canónicas** (una por celda tarea×perfil). El
+  experimento completo dejó 25 `decision.json` en `runs/`: 15 canónicas,
+  8 `ceremony_FAILED` (los `NoValidProposal` del hallazgo 1) y 2 reruns
+  duplicados que también cerraron. Todo conservado como artifact.
+- **Qué mide "Escaped" exactamente**: claims sin `evidence_refs` válidas
+  (refs que existan en el pack). El gate NO valida soporte semántico — en
+  `exp-task-1-b-r1-124854` sobrevive una claim incoherente con refs válidas.
 
 ## Métricas de infraestructura (medidas, no estimadas)
 
@@ -25,7 +33,7 @@ Loki. Nada inventado.
 |---|---|---|
 | Cold start: petición → instancia running | 77s | c-batch-metrics.env (13:06:24→13:07:41) |
 | Cold start: petición → reviewer sirviendo | **306s** | reviewer_ready 13:11:30 |
-| Batch C: 5 decisiones (3 steps c/u) | 92s (13:11:51→13:13:23) | run logs |
+| Batch C: 5 decisiones (3 steps c/u) | 104s (13:11:51→13:13:35) | c-batch-metrics.env |
 | Última petición → apagado autónomo | ~590s (GRACE 600s post-launch domina) | reaper events.log |
 | **Apagado por idle (autónomo)** | **13:23:11, idle_for=350s, launch_age=1003s** | `gpu-idle-reaper/events.log` |
 | Vida total del worker | **15,5 GPU-min** (13:07:41→13:23:11) | EC2 + reaper |
@@ -33,8 +41,9 @@ Loki. Nada inventado.
 | Reconstrucción post-mortem | **OK con worker `stopped`**: `alive_now=false`, 6 spans, 33 eventos, veredictos del gate íntegros | decision-trace-tui --no-tui |
 
 La relación evidencia/cómputo: ~32 KB conservan el registro completo de
-decisiones que costaron 15,5 GPU-minutos (~0,12 USD) producir. Guardarlo todo
-no tiene excusa.
+decisiones que costaron 15,5 GPU-minutos (~0,22 USD: g6.xlarge on-demand en
+eu-south-2 a $0.848/h según AWS Price List, 2026-07-05; EBS aparte) producir.
+Guardarlo todo no tiene excusa.
 
 ## La línea que resume el experimento (log real)
 
@@ -56,10 +65,11 @@ worker: g6.xlarge i-084f4b98659f48a19 idle_shutdown=true alive_now=Some(false)
    ceremonia únicos por invocación.
 3. La atribución run↔traza necesita ventana temporal exacta (dos runs
    consecutivas se roban la traza con una búsqueda "la más reciente").
-4. n=15 runs, 1 repetición: experimento de arquitectura operativa, no
-   benchmark de razonamiento. El GRACE de 600s del reaper domina el tiempo
-   hasta el apagado en sesiones cortas (ajustable; el contador de idle en sí
-   fue 350s ≈ los 300s configurados + tick).
+4. n=15 runs canónicas, 1 repetición por celda tarea×perfil (+8 fallos de
+   ceremonia y 2 reruns duplicados conservados): experimento de arquitectura
+   operativa, no benchmark de razonamiento. El GRACE de 600s del reaper domina
+   el tiempo hasta el apagado en sesiones cortas (ajustable; el contador de
+   idle en sí fue 350s ≈ los 300s configurados + tick).
 5. `rejected_claims` está en 0 en todos los perfiles: el gate actual mata
    PROPUESTAS enteras, no claims individuales; el conteo por-claim rechazada
    requiere el estado request_more_evidence (trabajo futuro anotado en #118).
