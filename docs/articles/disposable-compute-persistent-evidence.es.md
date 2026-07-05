@@ -1,102 +1,101 @@
 # Dejé que mis workers GPU se apagaran a los 5 minutos. Sus decisiones tenían que seguir siendo auditables.
 
-> **BORRADOR v4 (castellano)** — 2026-07-05. Regla cumplida: nada inventado.
+> **BORRADOR v8 (castellano)** — 2026-07-05. Regla cumplida: nada inventado.
 > El experimento está EJECUTADO y todos los datos son reales (fuentes en
 > `experiment/RESULTS.md`; cada cifra tiene artifact, trace_id o log).
-> Hook A elegido y fusionado con el §1; hook B descartado. Pendiente:
-> capturas (comandos en el apéndice), flip del repo a público y pasada
-> editorial humana. Traducción al inglés cuando el texto esté cerrado.
+> Hook A elegido y fusionado con el §1; hook B descartado. Capturas
+> principales integradas (PNG + GIF). Pendiente: capturas opcionales
+> (comandos en el apéndice), flip del repo a público y pasada editorial
+> humana. Traducción al inglés cuando el texto esté cerrado.
 
 ---
 
-Mi fact-checker canonizó una mentira.
+El peor fallo de mi cluster de agentes no fue que un modelo alucinara. Fue
+que el verificador convirtió esa alucinación en un hecho.
 
-Acababa de conectar a mi cluster local (4 GPUs NVIDIA Ampere de 24 GB) un
-worker GPU efímero en AWS — arranca bajo demanda, se une por WireGuard y se
-apaga solo a los cinco minutos de inactividad — y necesitaba una reunión de
-ejemplo que ejercitara el cluster híbrido de verdad. Elegí una investigación
-forense tipo *whodunit*: un panel de seis modelos investigando un incidente
-real del propio cluster — un proceso huérfano que retenía un puerto y que ni
-Kubernetes ni el runtime podían matar. Le di al panel la evidencia cruda del
-journal — sin la conclusión — y papeles: un forense, un escéptico, un perito,
-un testigo junior cuyo único trabajo era separar hechos de conjeturas, y un
-juez. Dos de los seis — el perito y, precisamente, el fact-checker —
-hablaban desde la GPU de AWS.
+El contexto era simple: quería probar un cluster GPU híbrido. La parte estable
+estaba en mi máquina local, con 4 GPUs NVIDIA Ampere de 24 GB. La parte
+desechable estaba en AWS: un worker GPU que arrancaba bajo demanda, se unía al
+cluster por WireGuard y se apagaba solo si pasaba cinco minutos sin trabajo.
 
-Como prueba de infraestructura, la reunión cumplió: la ceremonia cruzó el
-túnel, los seis pasos cerraron. Lo que sigue no lo vi en directo. Lo descubrí
-después, leyendo las actas y las trazas que la deliberación dejó atrás.
+Para probarlo necesitaba algo más real que un "hello world". Elegí una
+investigación forense tipo [*whodunit*](https://en.wikipedia.org/wiki/Whodunit):
+un equipo de seis modelos de IA investigando un incidente
+real del propio cluster. Un proceso se había quedado huérfano, retenía un
+puerto, y ni Kubernetes ni el runtime podían matarlo. Le di al equipo la
+evidencia cruda del [journal](https://www.freedesktop.org/software/systemd/man/latest/systemd-journald.service.html)
+— sin la conclusión — y roles como: un forense, un
+escéptico, un perito, un testigo junior cuyo único trabajo era separar hechos
+de conjeturas, y un juez.
+
+Como prueba de infraestructura, la reunión cumplió: los seis pasos de la
+ceremonia — así llama el orquestador, el
+[Underpass Choreographer](https://github.com/underpass-ai/underpass-choreographer),
+a una reunión de agentes con pasos y reglas — cerraron sin errores. Nada de
+lo que sigue lo vi en directo: lo descubrí más tarde, leyendo las actas y las
+trazas que la observabilidad del Choreographer deja tras cada deliberación.
 
 El forense (un modelo de 30B parámetros) afirmó que el pod tenía
-`privileged: true` "según el spec". El expediente no decía eso en ninguna
-parte. Se lo inventó.
+`privileged: true` "según el spec". El material que le di al equipo no decía
+eso en ninguna parte. Se lo inventó.
 
-El testigo junior — el modelo más pequeño del panel, 3B, cuya única función
-era el fact-checking — lo escribió en su registro como **"Fact"**.
+El testigo junior — el modelo más pequeño del equipo, 3B, cuya única función
+era verificar los hechos — lo escribió en su registro como **"Fact"**.
 
 Y el juez dictó veredicto con confianza **"High"**, citando esa evidencia.
 
-Cuando monté la apelación (dos councils, tres rondas de crítica adversarial
-cruzada, la respuesta correcta revelada), fue peor: cada ronda de "critica la
-propuesta de tu compañero" funcionó como "elabora más". Al final de la tercera
-ronda, los councils proponían "capas de normalización semántica con PCA/UMAP"
-y "umbrales para ruido por debajo de 20Hz". Nadie volvió a mirar la evidencia.
+Cuando monté la apelación — dos consejos de modelos, tres rondas de crítica
+adversarial cruzada, incluso con la respuesta correcta del incidente ya
+revelada — fue peor: cada ronda de "critica la propuesta de tu compañero"
+funcionó como "elabora más". Al final de la tercera ronda, los consejos
+proponían "capas de normalización semántica con
+[PCA](https://en.wikipedia.org/wiki/Principal_component_analysis)/[UMAP](https://en.wikipedia.org/wiki/Uniform_manifold_approximation_and_projection)"
+y "umbrales para ruido por debajo de 20Hz" — propuestas que ya no tenían nada
+que ver con el incidente. Nadie volvió a mirar la evidencia.
 
 El problema no era cuántas voces tenía mi reunión de agentes. El problema era
 que ninguna afirmación estaba obligada a apoyarse en evidencia — y todo el
-aparato social del panel (crítica, revisión, fact-check, juez) amplificaba la
-fluidez, no la verdad.
+aparato social del equipo (crítica, revisión, verificación, juez) amplificaba
+la fluidez, no la verdad.
 
 Así que cambié la pregunta.
+
+Si los agentes van a participar en decisiones reales, no basta con guardar la
+respuesta final: hay que poder reconstruir cómo se llegó a ella.
 
 ---
 
 ## 1. La primera pregunta equivocada
 
-Todo lo anterior pude descubrirlo — reconstruir quién dijo qué, qué se
-inventó quién y qué consagró el fact-checker — porque la deliberación dejó
-actas y trazas. Los datos de esa etapa (reales, reproducibles en
-[mi repo](https://github.com/underpass-ai/aws-side-cluster)):
+Mi primera pregunta había sido "¿cuántos agentes necesito para que esto
+delibere bien?". Era la pregunta equivocada, y las actas lo demuestran con
+datos reales, reproducibles desde
+[mi repo](https://github.com/underpass-ai/aws-side-cluster):
 
-- El panel de 6 modelos (dos sirviendo desde la GPU de AWS, time-slicing sobre
-  una sola L4) acertó la *clase* de causa raíz del incidente,
-  pero fabricó por el camino la evidencia clave, y el mecanismo de
-  fact-checking la consagró en vez de filtrarla.
-- Tres rondas de peer review adversarial (12 críticas+revisiones, 31 llamadas
-  LLM, trace `a5ed9c25…`) **aumentaron** la distancia entre las conclusiones
-  y los hechos. El único participante que se mantuvo pegado a la evidencia fue
-  el modelo más pequeño (3B) con el encargo más estrecho.
+- El equipo de 6 modelos — dos de ellos, por cierto, sirviendo desde un nodo
+  g6.xlarge de AWS conectado de forma segura a mi cluster local — acertó la
+  *clase* de causa raíz del incidente, pero inventó por el camino la
+  evidencia clave, y el mecanismo de verificación la dio por buena en vez de
+  filtrarla.
+- Tres rondas de deliberación tipo
+  [*peer review*](https://en.wikipedia.org/wiki/Peer_review) adversarial que,
+  con cada iteración, empeoraron las conclusiones frente a la realidad de los
+  hechos (12 críticas+revisiones, 31 llamadas LLM, trace `a5ed9c25…`).
 - El consenso no es evidencia. Una votación entre modelos sigue siendo solo
   una votación.
 
-Y nada de esto es una rareza de mi cluster: la literatura reciente describe
-exactamente estos modos de fallo.
+Resulta que, tirando del hilo, la literatura reciente describe exactamente
+lo que se observaba en las deliberaciones de mi equipo de agentes:
 
-- **La alucinación hace bola de nieve**: un modelo que se sobre-compromete con
-  un error temprano genera errores que por separado sabría reconocer
-  ([Zhang et al., ICML 2024](https://arxiv.org/abs/2305.13534), *How Language
-  Model Hallucinations Can Snowball*). El `privileged: true` del forense,
-  convertido en cimiento del veredicto.
-- **El fact-checker sicofante**: los modelos afinados con feedback humano
-  tienden a preferir la respuesta convincente que confirma lo ya dicho por
-  encima de la correcta ([Sharma et al., ICLR 2024](https://arxiv.org/abs/2310.13548),
-  *Towards Understanding Sycophancy in Language Models*). Mi junior canonizó
-  a la autoridad, no a los hechos.
-- **Revisar sin señal externa no corrige**: sin feedback externo, las rondas
-  de "critica y revisa" pueden incluso degradar el resultado
-  ([Huang et al., ICLR 2024](https://arxiv.org/abs/2310.01798), *Large
-  Language Models Cannot Self-Correct Reasoning Yet*). Mis tres rondas de
-  apelación adversarial son ese resultado, con actas.
-- **Los sistemas multiagente fallan por verificación, no por falta de voces**:
-  la taxonomía MAST — construida sobre 1600+ trazas anotadas de siete
-  frameworks multiagente — agrupa 14 modos de fallo en tres categorías:
-  diseño del sistema, desalineamiento entre agentes y, la categoría de mi
-  panel, verificación de la tarea
-  ([Cemri et al., 2025](https://arxiv.org/abs/2503.13657), *Why Do
-  Multi-Agent LLM Systems Fail?*).
+| Lo que describe la literatura | Lo que pasó en mi equipo |
+|---|---|
+| **La alucinación hace bola de nieve**: un error temprano al que el modelo se sobre-compromete engendra errores derivados ([Zhang et al., ICML 2024](https://arxiv.org/abs/2305.13534)) | El `privileged: true` del forense, convertido en cimiento del veredicto |
+| **El verificador sicofante**: los modelos afinados con feedback humano prefieren confirmar lo ya dicho antes que corregirlo ([Sharma et al., ICLR 2024](https://arxiv.org/abs/2310.13548)) | El junior registró como "Fact" la invención de la autoridad |
+| **Revisar sin señal externa no corrige** — puede incluso degradar el resultado ([Huang et al., ICLR 2024](https://arxiv.org/abs/2310.01798)) | Tres rondas de apelación que empeoraron las conclusiones, con actas |
+| **Los sistemas multiagente fallan por verificación, no por falta de voces**: una de las tres categorías de la taxonomía MAST ([Cemri et al., 2025](https://arxiv.org/abs/2503.13657)) | La categoría exacta de mi equipo: verificación de la tarea |
 
-Mi panel no era un caso raro; era un ejemplar de manual. Por eso la salida no
-podía ser más rondas ni mejores prompts: tenía que ser estructural.
+Después de leerlos, la solución no podía ser más rondas ni mejores prompts:
+tenía que ser estructural.
 
 La conclusión operativa no fue "necesito mejores modelos". Fue:
 
@@ -105,18 +104,21 @@ afirmaciones sin soporte se conviertan en decisiones.**
 
 ## 2. La pregunta correcta
 
-> ¿Puede un cluster híbrido efímero ejecutar una decisión de agentes y
-> conservar suficiente telemetría, logs, métricas y evidencia para
-> **reconstruir la decisión después de que los workers cloud se hayan
-> apagado**?
+> ¿Puede un cluster con workers efímeros ejecutar una decisión de agentes y
+> conservar suficiente evidencia — trazas, logs, métricas — para
+> **reconstruir la decisión después de que esos workers se hayan apagado**?
 
 Dos principios, repetidos a lo largo de todo el diseño:
 
 **El cómputo es desechable. La evidencia es persistente.**
 
-**El juez no es otro modelo. El juez es política.**
+**El juez no es otro modelo. El juez es un conjunto de reglas.**
 
 ## 3. La arquitectura
+
+La arquitectura tiene tres piezas. Una parte estable coordina. Una parte
+desechable aporta GPU cuando hace falta. Y la evidencia vive aparte, en
+sistemas que no desaparecen cuando el worker se apaga.
 
 ```text
 ┌─────────────────────────────────────────────────┐
@@ -142,65 +144,66 @@ Dos principios, repetidos a lo largo de todo el diseño:
 └─────────────────────────────────────────────────┘
 ```
 
-Detalles que importan (y que son el 80% del trabajo real):
+Lo más importante:
 
-- **El apagado no es un cron**: un reaper mide la señal real de uso
-  (`vllm:num_requests_running` en Prometheus) porque el tráfico LLM in-cluster
-  es invisible para un gateway HTTP. Cinco minutos a cero → stop. Cada apagado
-  queda registrado con timestamps: el apagado es un dato del experimento, no
-  una molestia.
-- **La observabilidad la emite el propio Choreographer, no un sidecar**: la
+- **El worker se apaga por inactividad real, no por horario**: un *reaper* —
+  un proceso de apagado automático — mira en Prometheus la métrica
+  `vllm:num_requests_running` de los vLLM alojados en la nube. Si pasan cinco
+  minutos sin peticiones, apaga la instancia.
+
+- **La observabilidad es captada por Choreographer**: la
   capa de evidencia existe porque el
   [Underpass Choreographer](https://github.com/underpass-ai/underpass-choreographer)
-  instrumenta cada ceremonia de serie — un trace por decisión, un span por
+  instrumenta cada ceremonia — un trace por decisión, un span por
   paso, eventos estructurados con `ceremony_id`, métricas. Prometheus, Tempo
-  y Loki solo almacenan lo que él exporta. Y no es opcional: si el
-  endpoint OTLP no está configurado, el chart te lo grita en el install con
-  un banner imposible de ignorar. (Ese banner es una PR nuestra al proyecto —
-  nació de descubrir que llevábamos días corriendo deliberaciones sin
-  exportar trazas.)
-- **La IP pública del worker cambia en cada arranque**; el control-plane
-  resincroniza el túnel. Los pesos de los modelos viven en S3 (clase Glacier
-  con acceso inmediato) para que recrear el worker desde cero sea barato.
+  y Loki guardan esa evidencia fuera del worker.
+- **La IP pública del worker cambia en cada arranque**; el control plane de
+  Kubernetes la resincroniza. Los pesos de los modelos viven en S3 Glacier
+  Instant Retrieval, para poder arrancar el worker desde cero.
 
 ![Dashboard de Grafana del worker GPU efímero](resources/screenshot-2026-07-04_14-46-12.png)
 
-*Dashboard de Grafana del worker efímero: la L4 sirve el batch C, el reviewer
-trabaja durante las cinco decisiones evidence-bound, Loki conserva los
-veredictos del gate y el worker se apaga a las 13:23:11. Los timestamps
-canónicos del batch salen de `c-batch-metrics.env`: 13:11:51→13:13:35.*
+*Dashboard de Grafana del worker efímero: la L4 sirve las cinco decisiones
+del perfil C (§5), el revisor trabaja en cada una, Loki conserva los
+veredictos del juez de reglas y el worker se apaga a las 13:23:11; el último
+veredicto había caído a las 13:13:23.*
 
-## 4. El perfil de reunión: Evidence-Bound Change Review
+## 4. La regla del experimento: nada entra sin evidencia
 
-No es un "consejo multiagente". Es una revisión de cambios con evidencia
-obligatoria:
+En los artefactos, esta configuración se llama `evidence_bound_review`. En
+lenguaje normal: los modelos podían proponer y discutir, pero la decisión final
+solo salía si cada afirmación apuntaba a una pieza concreta del paquete de
+evidencia (*evidence pack*). Los nombres del diagrama son los del YAML; el
+flujo es lo importante:
 
-- **evidence_collector** (determinista, no LLM): construye el evidence pack —
-  contexto del repo, trazas previas, métricas. Los agentes solo pueden citar
-  lo que está en el pack.
-- **primary_engineer** (LLM, local): propone la decisión con claims, riesgos y
-  `evidence_refs`.
-- **skeptical_reviewer** (LLM, **en el worker efímero**): ataca las claims sin
-  soporte. No sintetiza; solo objeta o acepta.
-- **deterministic_judge** (motor de políticas, **no es un modelo**): valida
-  esquema, campos obligatorios, que cada claim tenga `evidence_refs` que
-  existan en el pack. Puede rechazar la decisión entera o pedir más evidencia.
+```text
+evidence_collector
+  prepara el evidence pack
+        │
+        ▼
+primary_engineer ── propuesta + evidence_refs ──► skeptical_reviewer (L4)
+        ▲                                           │
+        └──────────── objeciones / revisión ────────┘
+                            │
+                            ▼
+                    deterministic_judge
+              ¿cada evidence_ref existe en el pack?
+                    sí → entra en el expediente
+                    no → rechazo / más evidencia
+```
 
-Sin votación por mayoría. Sin consenso. Una claim sin referencia válida al
-evidence pack no llega a la decisión final: el contrato la mata antes.
+El **juez de reglas** no es un modelo: aplica siempre el mismo contrato de
+salida.
 
-Esto no es un diseño en papel: el
+Para este punto,
 [Underpass Choreographer](https://github.com/underpass-ai/underpass-choreographer)
-(open source) ya tenía el aparato de
-contratos de salida y el rechazo determinista (`NoValidProposal`); lo que
-faltaba era poder declararlo en el YAML de la ceremonia y el validator de
-grounding. Son las dos PRs que abrimos durante el experimento *(#118, #119;
-mas la #120 que nacio de las primeras runs — las tres ya mergeadas
-upstream)* — el "juez-política" es cableado, no ciencia ficción.
+ya disponía de contratos de salida y rechazo deterministas
+(`NoValidProposal`), configurables desde el YAML de la ceremonia.
 
 ## 5. Los tres perfiles comparados
 
-La comparación es de **gobernanza**, no de modelos:
+La comparación es de **gobernanza**, no de modelos: cambia la regla para
+aceptar una salida.
 
 | Perfil | Modelos | Evidencia obligatoria | Juez determinista |
 |---|---|---|---|
@@ -210,69 +213,82 @@ La comparación es de **gobernanza**, no de modelos:
 
 Cinco tareas de revisión reales (decisiones de diseño del propio
 Choreographer), tres perfiles, **15 ejecuciones canónicas** — una por celda
-tarea×perfil. El experimento completo dejó 25 artifacts en `experiment/runs/`:
-las 15 canónicas, 8 fallos de ceremonia (los `NoValidProposal` que cuento en
-el §8, conservados como datos) y 2 reruns duplicados que también cerraron. La
-tabla usa las canónicas; el resto sigue en el repo.
+tarea×perfil. El experimento completo dejó 25 ejecuciones registradas: las 15
+canónicas de la tabla, 8 fallos de ceremonia (4 rechazados por el
+juez de reglas y 4 por problemas operativos alrededor del *runner*, el script
+que lanzaba las ceremonias) y 2 repeticiones duplicadas.
+Todo conservado en `experiment/runs/`.
 
-**La métrica estrella: `unsupported_claim_escape_count`** — cuántas
-afirmaciones llegaron a la decisión final sin una referencia válida al
-evidence pack. Conviene ser preciso con lo que mide y lo que no: el
-juez-política comprueba que cada claim cite evidencia *que existe en el pack*;
-no valida que la evidencia soporte semánticamente la afirmación. Elimina la
-clase de fallo del panel del arranque — la afirmación huérfana que nadie
-obligó a citar —, pero el grounding semántico sigue necesitando revisión
-(vuelvo sobre esto en las limitaciones).
+La métrica principal, `unsupported_claim_escape_count`, responde a una pregunta
+concreta: ¿cuántas afirmaciones llegaron a la decisión final sin una referencia
+existente en el expediente?
+
+Precisión importante: en estas runs, "referencia existente" no significa
+"afirmación demostrada". El juez de reglas comprueba que la cita exista en el
+paquete; no evalúa si esa cita sostiene la frase. Esa segunda capa ya está en
+construcción en Choreographer, pero no formaba parte del experimento medido aquí.
 
 ## 6. Qué medí
 
-Los resultados reales (2026-07-04; cada fila sale de artifacts persistidos con
-su trace_id):
+Esta es la foto del experimento controlado que lancé el 4 de julio de 2026,
+después del fallo inicial. No son notas tomadas a mano: cada fila se puede
+reconstruir desde artefactos persistidos con su `trace_id`.
 
-| Perfil | Claims totales | Con ref válida | **Escaped** | Traza sobrevive al shutdown | Decisiones |
+| Perfil | Afirmaciones totales | Con ref existente | **Escaped** (se colaron) | Traza sobrevive al apagado | Decisiones |
 |---|---|---|---|---|---|
 | A freeform | 14 | 0 | **14** | sí | 4 accept · 1 reject |
 | B evidence gate | 18 | 18 | **0** | sí | 4 accept · 1 reject |
 | C evidence-bound review | 18 | 18 | **0** | sí | 3 accept · **2 reject** |
 
-El baseline hizo exactamente lo que se temía: **las 14 claims del perfil A
-llegaron a la decisión sin una sola referencia a evidencia**. Con el contrato
-activado, cero de treinta y seis. Y el dato que no esperaba: **con la misma
-evidencia, la tarea 1 fue `accept` en B y `reject` en C** — las objeciones
-del escéptico (que corría en el worker efímero) cambiaron el veredicto, no
-solo lo decoraron.
+El perfil A, sin contrato, hizo exactamente lo que me temía: **sus 14
+afirmaciones llegaron a la decisión sin una sola referencia a evidencia**. En
+los perfiles con contrato, ninguna de las 36 afirmaciones llegó sin una
+referencia existente en el expediente. Eso no las convierte automáticamente en
+verdaderas; solo elimina la frase que ni siquiera señala de dónde sale.
 
-Infraestructura, medida con timestamps:
+El contraste más útil apareció en la tarea 1. Con la misma pregunta y el mismo
+paquete de evidencia, B cerró en `accept` y C cerró en `reject`. En C, además,
+se ve el camino: la propuesta inicial tenía dos afirmaciones, el revisor en la
+L4 marcó una objeción `BLOCKING`, y la versión final salió con una sola
+afirmación. La traza permite comprobar esos tres pasos después, aunque el
+worker que ejecutó al revisor ya esté apagado.
 
-- Cold start: petición de arranque → instancia running **77s** → reviewer
-  sirviendo inferencia **306s**.
-- Las 5 decisiones del perfil C (3 pasos cada una): **104 segundos** de batch
-  (13:11:51→13:13:35, `c-batch-metrics.env`).
-- **Apagado autónomo**: el reaper mató el worker a las 13:23:11 tras 350s de
+La infraestructura dejó estos tiempos:
+
+- Arranque en frío: **77 segundos** hasta tener la instancia encendida;
+  **306 segundos** hasta que el revisor podía servir inferencia. Es decir,
+  unos cinco minutos antes de que la L4 estuviera realmente útil; ahí entran
+  la unión al cluster, el contenedor/vLLM y la carga de pesos.
+- Una vez caliente, no volví a pagar ese arranque mientras el worker siguió
+  vivo: las 5 decisiones del perfil C (3 pasos cada una) entraron en **92
+  segundos** de deliberación (104 contando la contabilidad del runner entre
+  decisión y decisión; fuentes en `experiment/RESULTS.md`). No medí latencia
+  por petición; medí la diferencia operativa entre mantener el worker caliente
+  unos minutos y dejar que se apague.
+- **Apagado autónomo**: el reaper apagó el worker a las 13:23:11 tras 350s de
   inactividad medida (la primera línea real de su `events.log`:
   `idle_shutdown instances=i-084f… idle_for=350s`).
-- Vida total del worker: **15,5 GPU-minutos** — ~0,22 USD a precio on-demand
-  de g6.xlarge en eu-south-2 ($0.848/h según la Price List de AWS a fecha de
-  publicación; EBS y transferencia aparte).
+- Vida total del worker: **15,5 GPU-minutos** — unos 0,22 $ a precio
+  on-demand de g6.xlarge en eu-south-2 (0,848 $/hora según la Price List de
+  AWS a fecha de escritura, julio 2026; EBS y transferencia aparte).
 
-Y la que más me gusta: **~32 KB de evidencia persistida** conservan el
-registro completo de decisiones que costaron 15,5 GPU-minutos producir. La
-evidencia es órdenes de magnitud más barata que el cómputo que la genera.
-Guardarla toda no tiene excusa.
+El worker no conservó nada. Lo que sobrevivió quedó fuera: **~32 KB** entre
+artefactos de decisión y respuestas del perfil C, más trazas y logs en la capa
+de observabilidad. Fue suficiente para reconstruir qué había pasado sin volver
+a encender la instancia.
 
-## 7. La reconstrucción (el momento que buscaba)
+## 7. Reconstruir una decisión con el worker apagado
 
 Escribí una herramienta de terminal en Rust — `decision-trace-tui` — cuyo
 punto de entrada no es el cluster: es el **artefacto de decisión**, un JSON
-persistido con el `trace_id`, el perfil, las claims y el ciclo de vida del
-worker. Desde ahí reconstruye todo: el waterfall de spans desde Tempo, la
-timeline de la deliberación desde Loki, y — el detalle que me importa —
-consulta si el worker que ejecutó aquello **sigue existiendo**.
+persistido con el `trace_id`, el perfil, las afirmaciones y el ciclo de vida
+del worker. Con ese identificador va a Tempo por los spans, a Loki por los
+eventos de la deliberación y al estado del worker para comprobar si la máquina
+sigue viva.
 
-La reconstrucción de la tarea 1 del experimento evidence-bound — perfil C,
-`evidence_bound_review`, revisando la evidencia del fallo inicial — con el
-worker YA APAGADO, y apagado por decisión propia del sistema (el reaper, no
-yo):
+Este es el caso que me interesaba: tarea 1, perfil C
+(`evidence_bound_review`), usando la evidencia del fallo inicial. Cuando abrí
+la traza, el worker ya estaba apagado por el reaper:
 
 ```text
 == decision exp-task-1-c-r1-131151 (evidence_bound_review) ==
@@ -292,61 +308,41 @@ rpc.run_ceremony (6933.7ms)
 …
 ```
 
-El worker no existe. La decisión, entera — quién propuso qué, qué objetó el
-escéptico, qué validó el juez-política claim a claim — sí.
+La instancia ya no existe. Pero la secuencia completa sí: quién propuso, qué
+objetó el revisor, qué validó el juez de reglas y con qué resultado terminó.
 
 ![Reconstrucción posterior de una decisión con el worker GPU apagado](resources/decision-trace-tui.gif)
 
-*`decision-trace-tui` reconstruyendo `exp-task-1-c-r1-131151`: no es la
-deliberación defectuosa original, sino una run del perfil C sobre esa
-evidencia. A la izquierda se ven la timeline PROPOSE→REVIEW→FINALIZE y los
-spans recuperados de Tempo; arriba a la derecha, el artifact de decisión
-(`reject`, 1 claim con evidencia, 0 escaped); abajo a la derecha, los eventos
-de Loki con los veredictos del gate. El footer verde confirma el punto central:
-el worker GPU ya no existe y la decisión fue reconstruida solo desde evidencia
-persistida.*
+*`decision-trace-tui` reconstruyendo `exp-task-1-c-r1-131151`: una run del
+perfil C sobre la evidencia del fallo inicial. La timeline muestra
+PROPOSE→REVIEW→FINALIZE; el panel de decisión muestra `reject`, 1 afirmación
+con evidencia y 0 escaped; Loki conserva los veredictos del juez de reglas. El
+footer confirma lo importante: el worker GPU ya no existe.*
 
-*En esa timeline, PROPOSE es `agent-primary_c-0` generando la propuesta inicial
-con dos claims; REVIEW es `agent-skeptic_c-0` en la L4 objetando una de ellas
-como `BLOCKING`; FINALIZE es `agent-primary_c_final-0` revisando la propuesta,
-eliminando la claim objetada y cerrando con `reject`. En el panel de Loki eso
-aparece como eventos `proposal drafted`, `validator verdict`, `proposal
-scored` y `ceremony step deliberation completed` para cada paso.*
+**Cuando el cómputo desaparece, la observabilidad deja de ser debugging:
+pasa a ser el expediente de la decisión.**
 
-Una traza no es solo un artefacto de debugging. En un sistema de agentes,
-puede ser parte del expediente de la decisión.
+## 8. La tarea 1 por dentro
 
-## 8. Resultados
+La tabla del §6 es el resultado principal: **en los perfiles con contrato,
+0 de 36 afirmaciones sin referencia existente llegaron a una decisión final;
+en el perfil A, sin contrato, se colaron las 14 de 14**. Para que no quede
+como una tabla abstracta, aquí está una de esas decisiones por dentro.
 
-La tabla del §6 es el resultado principal: **0/36 claims sin referencia
-válida al evidence pack llegaron a una decisión final en los perfiles con
-contrato, contra 14/14 en el baseline**. Tres piezas más completan el
-expediente:
-
-**El escéptico bloqueando de verdad** (output real del reviewer en la L4,
-tarea 1 del perfil C, ya dentro del experimento evidence-bound): el primary
-proponía aceptar; el reviewer respondió:
+**El revisor bloquea una afirmación**. En la tarea 1 del perfil C, ya dentro
+del experimento evidence-bound, la propuesta inicial tenía dos afirmaciones.
+El revisor que corría en la L4 respondió:
 
 > OBJECTION to "ev-t1-csi-fabrication" — the term 'privileged:true in the pod
 > spec' is mentioned without context; may require further clarification. […]
 > **BLOCKING overall.** Non-blocking decisions are too risky with partial
 > evidence; we seek definitive proof before making a non-rejection motion.
 
-La decisión final fue `reject`. En el perfil B, sin reviewer, la misma
-evidencia terminó en `accept`. El worker efímero no participó de adorno.
+Traducido: el revisor no estaba comentando la respuesta; marcó una objeción
+bloqueante a una de las dos afirmaciones. En el paso final, esa afirmación
+desapareció: la decisión quedó en `reject` con una sola afirmación.
 
-**El juez-política matando propuestas de verdad**: en las primeras runs, el
-gate rechazó como `NoValidProposal` propuestas *bien fundadas* — porque los
-modelos envolvían el JSON en fences markdown pese a prompts explícitos en
-contra (devstral: siempre; qwen3: el 60% de las runs). Es la anécdota más
-honesta del experimento: un policy gate estricto primero te enseña cuánto de
-tu pipeline depende de cosmética de transporte. Lo resolvimos upstream, en el
-Choreographer
-(los validators toleran payloads *puramente* fenceados — PR #120), porque la
-alternativa era que el gate midiera obediencia de formato en vez de calidad
-de evidencia.
-
-**El decision artifact real** (tarea 1, perfil C, tal como está en S3):
+**El artefacto de decisión real** (tarea 1, perfil C, tal como está en S3):
 
 ```json
 {
@@ -372,43 +368,29 @@ de evidencia.
 }
 ```
 
-**Limitaciones honestas**: esto no es un benchmark científico de
-razonamiento; es un experimento de arquitectura operativa. n=15 ejecuciones
-canónicas sobre 5 tareas (más 8 fallos de ceremonia y 2 reruns duplicados,
-conservados como artifacts); los resultados hablan de este sistema, no de
-los LLMs en general. La más importante: **el gate valida la cita, no la
-semántica**. Comprueba que cada claim referencie evidencia que existe en el
-pack, no que la evidencia soporte lo que la claim dice — de hecho, en uno de
-los runs del perfil B sobrevive una claim incoherente con refs válidas
-(está en el artifact, `exp-task-1-b-r1-124854`). El contrato garantiza que
-ninguna afirmación llega al expediente sin cita; que la cita sostenga la
-afirmación es el siguiente validador, y hoy requiere revisión.
-`rejected_claims` va a cero en todos los perfiles porque
-el gate actual rechaza propuestas enteras, no claims individuales (el estado
-`request_more_evidence` como transición de primera clase es trabajo futuro
-anotado en la PR #118). Y el "5 minutos" del titular es el contador de idle:
-en sesiones cortas, el periodo de gracia post-arranque (10 min, para no matar
-la carga de modelos) domina el tiempo total hasta el apagado.
+**Limitaciones honestas**: esto no es una evaluación general de razonamiento;
+es un experimento de arquitectura operativa. Son 15 ejecuciones canónicas sobre
+5 tareas, más 8 fallos de ceremonia y 2 reruns duplicados conservados como
+artefactos. Los resultados hablan de este sistema, no de los LLMs en general.
 
-## 9. Qué cambió en mi cabeza
+La limitación más importante sigue siendo la del §5: **el juez de reglas
+validó citas existentes, no soporte semántico**. La siguiente capa — comprobar
+si la evidencia citada sostiene la afirmación — ya está en construcción en
+Choreographer, pero no entró en estas runs.
 
-Menos agentes.
-Contratos más fuertes.
-Evidencia antes que síntesis.
-Política antes que consenso.
-La observabilidad como infraestructura de la decisión, no como monitoring.
+Otra limitación: el juez de reglas actual rechaza propuestas enteras, no
+afirmaciones individuales. Por eso `rejected_claims` va a cero en todos los
+perfiles; el estado `request_more_evidence` como transición de primera clase
+todavía no formaba parte de estas runs.
 
-La frase que me llevo: dejé de optimizar el número de agentes y empecé a
-medir la calidad de la evidencia.
+## 9. Qué me deja el experimento
 
-## 10. Qué viene después
+La conclusión no es que hagan falta más agentes. Es que, si una decisión va a
+importar después, necesita tres cosas: un contrato de salida, evidencia
+persistida y una traza que permita reconstruir cómo se llegó ahí.
 
-- Un policy gate que transicione la ceremonia a `request_more_evidence` como
-  estado de primera clase (hoy el rechazo mata el step; la transición
-  explícita está anotada como trabajo futuro en la PR).
-- Modelos más grandes como reviewer puntual — me tienta Ornith-35B como
-  primary local cuando esté maduro.
-- Un nodo appliance portátil como tercer plano de cómputo.
+El número de modelos es secundario. La parte importante es qué puede pasar una
+vez que el modelo termina de hablar.
 
 ---
 
@@ -419,14 +401,56 @@ medir la calidad de la evidencia.
   reaper `~/.local/state/gpu-idle-reaper/events.log`). Sin TBD de datos.
 - **Hook decidido**: A (revisión editorial 2026-07-05); B eliminado del
   borrador y §1 fusionado con el hook.
+- **Pasada de naturalidad (v6, 2026-07-05)**: terminología del juez unificada
+  en "juez de reglas" (anclado en el §4; "compuerta"/"contrato" solo como
+  definición), glosas en primera aparición para ceremonia, councils→consejos,
+  fences, runner y time-slicing, "expediente" reservado para el expediente de
+  la decisión, pregunta equivocada explicitada al abrir el §1, cifras del §6
+  simplificadas (el detalle de fuentes queda en RESULTS.md), moneda unificada
+  en coma decimal, tildes de "más/nació" corregidas. Sin cambios de datos.
+- **Segunda pasada (v7, 2026-07-05)**: header ya no dice "pendiente:
+  capturas" a secas (las principales están integradas); glosa para *reaper*;
+  "ruido operativo del runner" → "problemas operativos alrededor del runner"
+  (eran 3 causas distintas, no solo el script); frase de los fences del §8
+  partida en tres; bloque de papers del §1 comprimido a la mitad (títulos de
+  papers fuera, enlaces y anclajes a la anécdota dentro; los números de MAST
+  siguen en este apéndice); RESULTS.md suavizado ("post-mortem" fuera,
+  "mata/no decora/sin excusa" reescritos). Sin cambios de datos.
+- **Apertura reescrita (v7)**: primera frase de contraste ("El peor fallo de
+  mi cluster de agentes no fue que un modelo alucinara…") elegida por el
+  autor entre tres opciones; barrido fact-checker/fact-checking →
+  verificador/verificar los hechos en todo el texto (el "Fact" literal del
+  registro se conserva en inglés porque es evidencia).
+- **Renombrado juez-política → juez de reglas (v7)**: "política" era falso
+  amigo de *policy* y ni el autor lo leía claro. Barrido en las 16
+  apariciones + "El juez es un conjunto de reglas" (§2), "motor de reglas"
+  (§4) y "Reglas antes que consenso" (§9). También panel→equipo (elegido por
+  el autor sobre tribunal/mesa/conjunto) y "la salida"→"la solución". En la
+  traducción EN, "policy judge"/"policy engine" sí funcionan tal cual.
+- **Pasada multi-lector (v8, 2026-07-05)**: revisión con cuatro lentes
+  (experto, curioso, lector ocasional y lector con mínima base de agentes).
+  Cambios de tono y claridad sin tocar datos: §8 deja de duplicar "Resultados"
+  y pasa a "La tarea 1 por dentro"; se elimina del cuerpo la anécdota de
+  fences; la causalidad del revisor se ajusta a los artifacts (objeción
+  `BLOCKING` → una afirmación desaparece en FINALIZE, sin afirmar que convirtió
+  un `accept` en `reject`); "ref válida" pasa a "ref existente"; limpieza de
+  anglicismos visibles y erratas (`nuve`, `metrica`, `shutdown`, `el el`).
 - **Correcciones de la revisión 2026-07-05** (verificadas contra artifacts):
-  batch C = 104s (`c-batch-metrics.env`, el "92s" venía de run logs no
-  persistidos); coste = ~0,22 USD ($0.848/h on-demand g6.xlarge eu-south-2,
-  Price List API); MAST = 1600+ trazas / 14 modos / 3 categorías (abstract
-  arXiv actual); métrica reescrita como "sin referencia válida" (el check de
-  `run.py` es de pertenencia de refs, no semántico — ejemplo: claim
-  incoherente con refs válidas en `exp-task-1-b-r1-124854`); recuento
-  completo 25 runs = 15 canónicas + 8 FAILED + 2 duplicadas.
+  batch C: ambas cifras son reales — 92s hasta el último veredicto del gate
+  (13:13:23,9, verificado en Loki y visible en la captura de Grafana) y 104s
+  de batch del runner (13:13:35, `c-batch-metrics.env`; la diferencia son las
+  consultas de lifecycle post-decisión); coste = ~0,22 USD ($0.848/h on-demand
+  g6.xlarge eu-south-2, Price List API); MAST = 1600+ trazas / 14 modos / 3
+  categorías (abstract arXiv actual); métrica reescrita como "sin referencia
+  válida" (el check de `run.py` es de pertenencia de refs, no semántico —
+  ejemplo: claim incoherente con refs válidas en `exp-task-1-b-r1-124854`);
+  recuento completo 25 runs = 15 canónicas + 8 FAILED + 2 duplicadas. Los 8
+  FAILED, verificados uno a uno (grpc-error.log + Loki): 4 rechazos del gate
+  por fences (propuestas "```json", `output-json-object passed=false`:
+  b-124657, b-124923, b-124936, b-124951), 1 `AlreadyExists` por id duplicado
+  (exp-task-1-b-r1) y 3 dial errors a localhost:50055 con el port-forward
+  caído (b-130010, b-130052, b-130123). NO decir que los 8 fueron
+  `NoValidProposal`.
 - **GATE de publicación**: el enlace a `aws-side-cluster` del §1 exige que el
   repo ya sea público (histórico saneado el 2026-07-05 con filter-repo; falta
   solo el flip privado→público en GitHub ANTES de publicar el artículo).
@@ -434,10 +458,10 @@ medir la calidad de la evidencia.
   2305.13534 (snowballing, ICML'24) · 2310.13548 (sycophancy, ICLR'24) ·
   2310.01798 (no self-correct, ICLR'24) · 2503.13657 (MAST). Asociación
   hecha en el texto: forense→snowballing, junior→sycophancy,
-  apelación→self-correct, panel→categoría "task verification" de MAST.
+  apelación→self-correct, equipo→categoría "task verification" de MAST.
 - **PRs upstream**: #115 banner NOTES · #116 runbook observabilidad · #117
   runbook autoría · #118 output contract YAML · #119 grounding validator ·
-  #120 tolerancia a fences. Las 3 últimas SON el juez-política.
+  #120 tolerancia a fences. Las 3 últimas SON el juez de reglas.
   **TODAS mergeadas el 2026-07-05** (CI verde; #118→#119→#120 iban apiladas,
   mergeadas en orden re-apuntando la base).
 - **Capturas integradas**:
