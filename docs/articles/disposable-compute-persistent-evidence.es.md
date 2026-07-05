@@ -1,6 +1,6 @@
 # Dejé que mis workers GPU se apagaran a los 5 minutos. Sus decisiones tenían que seguir siendo auditables.
 
-> **BORRADOR v3 (castellano)** — 2026-07-05. Regla cumplida: nada inventado.
+> **BORRADOR v4 (castellano)** — 2026-07-05. Regla cumplida: nada inventado.
 > El experimento está EJECUTADO y todos los datos son reales (fuentes en
 > `experiment/RESULTS.md`; cada cifra tiene artifact, trace_id o log).
 > Hook A elegido y fusionado con el §1; hook B descartado. Pendiente:
@@ -14,9 +14,9 @@ Mi fact-checker canonizó una mentira.
 Acababa de conectar a mi cluster local (4 GPUs NVIDIA Ampere de 24 GB) un
 worker GPU efímero en AWS — arranca bajo demanda, se une por WireGuard y se
 apaga solo a los cinco minutos de inactividad — y necesitaba una reunión de
-ejemplo que ejercitara el cluster híbrido de verdad. Elegí un post-mortem
-*whodunit*: un panel de seis modelos investigando un incidente real del
-propio cluster — un proceso huérfano que retenía un puerto y que ni
+ejemplo que ejercitara el cluster híbrido de verdad. Elegí una investigación
+forense tipo *whodunit*: un panel de seis modelos investigando un incidente
+real del propio cluster — un proceso huérfano que retenía un puerto y que ni
 Kubernetes ni el runtime podían matar. Le di al panel la evidencia cruda del
 journal — sin la conclusión — y papeles: un forense, un escéptico, un perito,
 un testigo junior cuyo único trabajo era separar hechos de conjeturas, y un
@@ -163,8 +163,12 @@ Detalles que importan (y que son el 80% del trabajo real):
   resincroniza el túnel. Los pesos de los modelos viven en S3 (clase Glacier
   con acceso inmediato) para que recrear el worker desde cero sea barato.
 
-*[CAPTURA 1 aquí: panel de arranque — instancia starting → nodo Ready →
-primer span OTEL — datos: 13:06:24 peticion, 13:07:41 running, 13:11:30 sirviendo. Panel Prometheus del apendice.]*
+![Dashboard de Grafana del worker GPU efímero](resources/screenshot-2026-07-04_14-46-12.png)
+
+*Dashboard de Grafana del worker efímero: la L4 sirve el batch C, el reviewer
+trabaja durante las cinco decisiones evidence-bound, Loki conserva los
+veredictos del gate y el worker se apaga a las 13:23:11. Los timestamps
+canónicos del batch salen de `c-batch-metrics.env`: 13:11:51→13:13:35.*
 
 ## 4. El perfil de reunión: Evidence-Bound Change Review
 
@@ -265,8 +269,10 @@ worker. Desde ahí reconstruye todo: el waterfall de spans desde Tempo, la
 timeline de la deliberación desde Loki, y — el detalle que me importa —
 consulta si el worker que ejecutó aquello **sigue existiendo**.
 
-La reconstrucción de la tarea 1 del perfil C, con el worker YA MUERTO — y
-muerto por decisión propia del sistema (el reaper, no yo):
+La reconstrucción de la tarea 1 del experimento evidence-bound — perfil C,
+`evidence_bound_review`, revisando la evidencia del fallo inicial — con el
+worker YA APAGADO, y apagado por decisión propia del sistema (el reaper, no
+yo):
 
 ```text
 == decision exp-task-1-c-r1-131151 (evidence_bound_review) ==
@@ -289,8 +295,23 @@ rpc.run_ceremony (6933.7ms)
 El worker no existe. La decisión, entera — quién propuso qué, qué objetó el
 escéptico, qué validó el juez-política claim a claim — sí.
 
-*[CAPTURA 2 aquí: el TUI completo sobre esta decisión, footer verde "el
-worker GPU ya NO existe". Comando listo en el apéndice.]*
+![Reconstrucción posterior de una decisión con el worker GPU apagado](resources/decision-trace-tui.gif)
+
+*`decision-trace-tui` reconstruyendo `exp-task-1-c-r1-131151`: no es la
+deliberación defectuosa original, sino una run del perfil C sobre esa
+evidencia. A la izquierda se ven la timeline PROPOSE→REVIEW→FINALIZE y los
+spans recuperados de Tempo; arriba a la derecha, el artifact de decisión
+(`reject`, 1 claim con evidencia, 0 escaped); abajo a la derecha, los eventos
+de Loki con los veredictos del gate. El footer verde confirma el punto central:
+el worker GPU ya no existe y la decisión fue reconstruida solo desde evidencia
+persistida.*
+
+*En esa timeline, PROPOSE es `agent-primary_c-0` generando la propuesta inicial
+con dos claims; REVIEW es `agent-skeptic_c-0` en la L4 objetando una de ellas
+como `BLOCKING`; FINALIZE es `agent-primary_c_final-0` revisando la propuesta,
+eliminando la claim objetada y cerrando con `reject`. En el panel de Loki eso
+aparece como eventos `proposal drafted`, `validator verdict`, `proposal
+scored` y `ceremony step deliberation completed` para cada paso.*
 
 Una traza no es solo un artefacto de debugging. En un sistema de agentes,
 puede ser parte del expediente de la decisión.
@@ -303,7 +324,8 @@ contrato, contra 14/14 en el baseline**. Tres piezas más completan el
 expediente:
 
 **El escéptico bloqueando de verdad** (output real del reviewer en la L4,
-tarea 1): el primary proponía aceptar; el reviewer respondió:
+tarea 1 del perfil C, ya dentro del experimento evidence-bound): el primary
+proponía aceptar; el reviewer respondió:
 
 > OBJECTION to "ev-t1-csi-fabrication" — the term 'privileged:true in the pod
 > spec' is mentioned without context; may require further clarification. […]
@@ -418,14 +440,17 @@ medir la calidad de la evidencia.
   #120 tolerancia a fences. Las 3 últimas SON el juez-política.
   **TODAS mergeadas el 2026-07-05** (CI verde; #118→#119→#120 iban apiladas,
   mergeadas en orden re-apuntando la base).
+- **Capturas integradas**:
+  1. Dashboard Grafana del worker efímero:
+     `docs/articles/resources/screenshot-2026-07-04_14-46-12.png`
+  2. TUI reconstrucción posterior:
+     `docs/articles/resources/decision-trace-tui.gif`
 - **Capturas pendientes (comandos listos)**:
-  1. TUI reconstrucción (LA captura):
-     `TEMPO=$(kubectl -n monitoring get svc tempo -o jsonpath='{.spec.clusterIP}'); LOKI=$(kubectl -n monitoring get svc loki -o jsonpath='{.spec.clusterIP}'); ./tools/decision-trace-tui/target/debug/decision-trace-tui experiment/runs/exp-task-1-c-r1-131151/decision.json --tempo http://$TEMPO:3200 --loki http://$LOKI:3100`
-  2. Waterfall en Grafana → Tempo, trace `80157a56cf6cc30994585d31b1cc1a6f`
+  1. Waterfall en Grafana → Tempo, trace `80157a56cf6cc30994585d31b1cc1a6f`
      (o `4c4bd9f6…` task-2 C, más spans).
-  3. Loki en Grafana: `{namespace="underpass-labs", pod=~"choreographer.*"} |= "exp-task-1-c-r1-131151"` — se ve el veredicto del gate por claim.
-  4. Decision JSON: ya embebido en §8 (real).
-  5. Métricas: panel Prometheus `vllm:num_requests_running` de 13:06–13:24
+  2. Loki en Grafana: `{namespace="underpass-labs", pod=~"choreographer.*"} |= "exp-task-1-c-r1-131151"` — se ve el veredicto del gate por claim.
+  3. Decision JSON: ya embebido en §8 (real).
+  4. Métricas: panel Prometheus `vllm:num_requests_running` de 13:06–13:24
      (se ve la actividad del batch C y el silencio que mató al worker).
 - **Título inglés**: "I Let My AI GPU Workers Shut Down After 5 Minutes.
   Their Decisions Still Had to Be Auditable."
