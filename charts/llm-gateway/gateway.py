@@ -32,6 +32,12 @@ PORT = int(os.environ.get("GATEWAY_PORT", "8000"))
 REFRESH_SECS = int(os.environ.get("GATEWAY_REFRESH_SECS", "30"))
 BACKEND_TIMEOUT = int(os.environ.get("GATEWAY_BACKEND_TIMEOUT_SECS", "300"))
 PROBE_TIMEOUT = int(os.environ.get("GATEWAY_PROBE_TIMEOUT_SECS", "3"))
+WAKE_ENABLED = os.environ.get("GATEWAY_WAKE_ENABLED", "true").lower() in ("1", "true", "yes", "on")
+WAKE_TIMEOUT = int(os.environ.get("GATEWAY_WAKE_TIMEOUT_SECS", "900"))
+WAKE_DISCOVERY_TIMEOUT = int(os.environ.get("GATEWAY_WAKE_DISCOVERY_TIMEOUT_SECS", "60"))
+WAKE_POLL_SECS = int(os.environ.get("GATEWAY_WAKE_POLL_SECS", "5"))
+MODEL_ANNOTATION = os.environ.get("GATEWAY_MODEL_ANNOTATION", "underpass.ai/served-model")
+WAKE_URL_ANNOTATION = os.environ.get("GATEWAY_WAKE_URL_ANNOTATION", "underpass.ai/wake-url")
 
 _SA = "/var/run/secrets/kubernetes.io/serviceaccount"
 
@@ -43,19 +49,29 @@ class Registry:
         self._lock = threading.Lock()
         self.by_model = {}   # model_id -> {"endpoint","role","service"}
         self.by_role = {}    # role -> [model_id, ...] (solo sanos)
+        self.wake_by_model = {}  # model_id -> backend con wake_url
+        self.wake_by_role = {}   # role -> [backend con wake_url, ...]
         self.backends = []   # estado completo para /backends
         self._rr = {}        # role -> indice round-robin
 
     def update(self, backends):
-        by_model, by_role = {}, {}
+        by_model, by_role, wake_by_model, wake_by_role = {}, {}, {}, {}
         for b in backends:
             for m in b["models"]:
                 by_model[m] = {"endpoint": b["endpoint"], "role": b["role"],
                                "service": b["service"]}
                 if b["healthy"]:
                     by_role.setdefault(b["role"], []).append(m)
+            if b.get("wake_url"):
+                for m in b.get("expected_models") or b["models"]:
+                    wake_by_model[m] = b
+                wake_by_role.setdefault(b["role"], []).append(b)
         with self._lock:
-            self.by_model, self.by_role, self.backends = by_model, by_role, backends
+            self.by_model = by_model
+            self.by_role = by_role
+            self.wake_by_model = wake_by_model
+            self.wake_by_role = wake_by_role
+            self.backends = backends
 
     def resolve(self, model):
         """-> (endpoint, model_real) o (None, None)."""
@@ -72,6 +88,14 @@ class Registry:
             hit = self.by_model.get(model)
             return (hit["endpoint"], model) if hit else (None, None)
 
+    def wake_candidate(self, model):
+        with self._lock:
+            if model.startswith("role:"):
+                role = model.split(":", 1)[1]
+                candidates = self.wake_by_role.get(role) or []
+                return candidates[0] if candidates else None
+            return self.wake_by_model.get(model)
+
     def snapshot(self):
         with self._lock:
             return {"backends": self.backends,
@@ -79,6 +103,8 @@ class Registry:
 
 
 REGISTRY = Registry()
+WAKE_LOCKS = {}
+WAKE_LOCKS_GUARD = threading.Lock()
 
 
 def k8s_get(path):
@@ -100,24 +126,92 @@ def probe_models(endpoint):
         return [], False
 
 
-def discover_loop():
+def discover_once():
     sel = urllib.parse.quote(LABEL)
+    svcs = k8s_get(f"/api/v1/namespaces/{NAMESPACE}/services?labelSelector={sel}")
+    backends = []
+    for s in svcs.get("items", []):
+        metadata = s.get("metadata", {})
+        annotations = metadata.get("annotations") or {}
+        name = metadata["name"]
+        role = metadata.get("labels", {}).get(LABEL, "unknown")
+        port = s["spec"]["ports"][0]["port"]
+        endpoint = f"http://{name}.{NAMESPACE}.svc:{port}"
+        expected_models = [
+            item.strip()
+            for item in annotations.get(MODEL_ANNOTATION, "").split(",")
+            if item.strip()
+        ]
+        wake_url = annotations.get(WAKE_URL_ANNOTATION)
+        models, healthy = probe_models(endpoint)
+        backends.append({
+            "service": name,
+            "role": role,
+            "endpoint": endpoint,
+            "models": models,
+            "expected_models": expected_models,
+            "healthy": healthy,
+            "wake_url": wake_url,
+        })
+    REGISTRY.update(backends)
+    return backends
+
+
+def discover_loop():
     while True:
         try:
-            svcs = k8s_get(f"/api/v1/namespaces/{NAMESPACE}/services?labelSelector={sel}")
-            backends = []
-            for s in svcs.get("items", []):
-                name = s["metadata"]["name"]
-                role = s["metadata"]["labels"].get(LABEL, "unknown")
-                port = s["spec"]["ports"][0]["port"]
-                endpoint = f"http://{name}.{NAMESPACE}.svc:{port}"
-                models, healthy = probe_models(endpoint)
-                backends.append({"service": name, "role": role, "endpoint": endpoint,
-                                 "models": models, "healthy": healthy})
-            REGISTRY.update(backends)
+            discover_once()
         except Exception as e:
             print(f"[discover] error: {e}", flush=True)
         time.sleep(REFRESH_SECS)
+
+
+def wake_lock_for(service):
+    with WAKE_LOCKS_GUARD:
+        if service not in WAKE_LOCKS:
+            WAKE_LOCKS[service] = threading.Lock()
+        return WAKE_LOCKS[service]
+
+
+def call_wake(candidate, model):
+    url = candidate.get("wake_url")
+    if not url:
+        raise RuntimeError("backend has no wake_url")
+    print(f"[wake] model={model} service={candidate['service']} url={url}", flush=True)
+    req = urllib.request.Request(url, method="GET")
+    with urllib.request.urlopen(req, timeout=WAKE_TIMEOUT) as r:
+        detail = r.read(2000)
+        print(f"[wake] service={candidate['service']} status={r.status} body={detail[:200]!r}", flush=True)
+
+
+def resolve_or_wake(model):
+    endpoint, real = REGISTRY.resolve(model)
+    if endpoint:
+        return endpoint, real, None
+    if not WAKE_ENABLED:
+        return None, None, None
+
+    candidate = REGISTRY.wake_candidate(model)
+    if not candidate:
+        return None, None, None
+
+    lock = wake_lock_for(candidate["service"])
+    with lock:
+        endpoint, real = REGISTRY.resolve(model)
+        if endpoint:
+            return endpoint, real, None
+        try:
+            call_wake(candidate, model)
+            deadline = time.time() + WAKE_DISCOVERY_TIMEOUT
+            while time.time() < deadline:
+                discover_once()
+                endpoint, real = REGISTRY.resolve(model)
+                if endpoint:
+                    return endpoint, real, None
+                time.sleep(WAKE_POLL_SECS)
+            return None, None, f"wake completed but model '{model}' did not become healthy"
+        except Exception as e:
+            return None, None, str(e)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -169,8 +263,12 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             return self._json(400, {"error": "invalid json body"})
         model = body.get("model", "")
-        endpoint, real = REGISTRY.resolve(model)
+        endpoint, real, wake_error = resolve_or_wake(model)
         if not endpoint:
+            if wake_error:
+                return self._json(503, {"error": {
+                    "message": f"model '{model}' wake failed: {wake_error}",
+                    "type": "wake_failed"}})
             return self._json(404, {"error": {
                 "message": f"model '{model}' not found (ni exacto ni alias role:)",
                 "type": "model_not_found"}})

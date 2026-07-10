@@ -24,7 +24,7 @@ Hitos: 2026-06-25 fase 1 (red/workers/gateway) · 2026-06-26 wake rootless, join
 - S3: `aws-side-poc-bootstrap-5d7cbe73` — ZIP de bootstrap, pesos de modelos (`models/*.tar`, GLACIER_IR) y logs de bootstrap de cada nodo (`logs/<hostname>-bootstrap.log`, diagnostico sin SSM/SSH).
 - IAM del rol EC2: `aws-side-poc-bootstrap-s3` (bootstrap + models) mas drift consciente documentado: `AmazonSSMManagedInstanceCore` (ops, attacheada por CLI) e inline `s3-node-logs` (shipper de logs). Ver "IAM" en `docs/article-base.md`.
 - Servicio de prueba AWS: `underpass-labs/aws-echo`, MetalLB `192.168.1.242`.
-- Gateway de demanda POC: `underpass-labs/aws-demand-gateway`, MetalLB `192.168.1.243`. Auto-stop por idle (300s) verificado — SOLO cubre los t3.micro; el nodo GPU se arranca/para a mano.
+- Gateway de demanda POC: `underpass-labs/aws-demand-gateway`, MetalLB `192.168.1.243`. Auto-stop por idle (300s) verificado para los t3.micro; perfiles GPU `/gpu/phi4` y `/gpu/smollm3` despiertan la g6. El apagado GPU lo hace `gpu-idle-reaper` con metricas vLLM de Prometheus.
 - LLM serving: `llm-gateway` (proxy OpenAI-compatible label-driven) + choreographer (ceremonias multimodelo; actas reales en `choreographer/runs/`).
 
 ## Arquitectura
@@ -76,7 +76,7 @@ El plano de control no se mueve a AWS. AWS aporta capacidad elastica: workers ge
 - `terraform/join.tf`: token bootstrap + join + wg-sync orquestados. Ver `docs/terraform-join.md`.
 - `terraform/dns.tf`: zona Route53 privada para el endpoint WireGuard EC2->PC.
 - `charts/local-llm/`: N modelos vLLM OpenAI-compatible, 1 GPU (o slot time-sliced) por modelo, labels `underpass.ai/llm-role`, ServiceMonitor Prometheus. `values.yaml` = 4 grandes locales; `values-aws-gpu.yaml` = 2 pequenos en la L4 (release separado `aws-gpu-llm`).
-- `charts/llm-gateway/`: reverse proxy OpenAI-compatible que descubre los vLLM por label y enruta por nombre exacto o alias `role:<rol>` (round-robin + health-check). Los nodos parados salen solos del pool.
+- `charts/llm-gateway/`: reverse proxy OpenAI-compatible que descubre los vLLM por label y enruta por nombre exacto o alias `role:<rol>` (round-robin + health-check). Los nodos parados salen solos del pool; los Services anotados con `underpass.ai/wake-url` pueden disparar wake del pool GPU.
 - `choreographer/`: values de despliegue del motor de ceremonias publico, ceremonias (`ceremonies/`) y actas de corridas reales (`runs/`). Ver `choreographer/README.md`.
 - `scripts/install-local-llm.sh`: instalador de los releases de modelos (`big`/`small`/`all`/`uninstall`).
 
@@ -412,7 +412,16 @@ Las EC2 existentes no reejecutan `user_data` al cambiar ese valor. Si el endpoin
 
 ## Operacion Del Worker GPU
 
-El nodo GPU no esta gestionado por el demand-gateway (sin auto-stop por idle): se arranca y para a mano. La capacity de g6 en eu-south-2a es escasa — reintentar el start cada ~90s.
+El nodo GPU puede levantarse desde demanda por dos rutas:
+
+- `llm-gateway`: si llega una peticion para `phi4-mini-aws` o `smollm3-aws` y
+  el Service anotado esta caido, llama al perfil wake correspondiente del
+  `aws-demand-gateway`.
+- `aws-demand-gateway`: `/gpu/phi4/wake` y `/gpu/smollm3/wake` arrancan la g6
+  (`aws-side:index=21`), sincronizan WireGuard y esperan a que el endpoint vLLM
+  este listo.
+
+La capacity de g6 en eu-south-2a es escasa — reintentar el start cada ~90s si AWS devuelve falta de capacidad.
 
 ```bash
 # levantar
@@ -421,9 +430,14 @@ scripts/wg-sync-ec2-endpoints.sh                      # IP publica nueva en cada
 kubectl -n underpass-labs get pods -l app.kubernetes.io/part-of=local-llm -w
 # los 2 vLLM de la L4 (phi4, smollm3) llegan a 1/1 solos; el llm-gateway los re-incluye por health-check
 
-# parar (compute a 0; queda el EBS de 100GB)
+# parar manualmente (compute a 0; queda el EBS de 100GB)
 aws ec2 stop-instances --instance-ids <g6>
 ```
+
+El apagado automatico de la GPU no usa `idleSeconds` del demand-gateway. Lo
+gestiona `scripts/gpu-idle-reaper.sh` como timer de usuario, midiendo
+`vllm:num_requests_running` para `phi4-mini-aws|smollm3-aws` en Prometheus y
+dejando evidencia en `~/.local/state/gpu-idle-reaper/events.log`.
 
 La L4 (24GB) sirve 2 modelos via time-slicing del GPU Operator: perfil `l4-slice-2` en el ConfigMap `time-slicing-config` (ns `nvidia`) + label `nvidia.com/device-plugin.config=l4-slice-2` en el nodo. Ojo: con time-slicing activo GFD renombra el producto a `NVIDIA-L4-SHARED` (el nodeSelector del chart ya lo refleja). Logs de bootstrap de cualquier nodo, sin SSM/SSH y con la instancia parada:
 
@@ -493,7 +507,7 @@ Las 3 fases estan validadas: red y lifecycle (1), GPU cloud con vLLM (2), ceremo
 
 Candidatos para la siguiente iteracion:
 
-- Reaper GPU: auto-stop de la g6 basado en metricas vLLM de Prometheus (`vllm:num_requests_running == 0` sostenido), analogo al idle de los t3 pero midiendo uso real de inferencia.
+- Endurecer el auto-wake GPU con mas pruebas de capacidad escasa y clientes con timeouts cortos.
 - Correr la ceremonia editorial `choreographer/ceremonies/article-decision-traces-hybrid.yaml` (lista, sin estrenar).
 - Codificar en Terraform el drift IAM (SSM + `s3-node-logs`) o retirarlo.
 - TLS/mTLS en el ingress de demanda; rotacion del token bootstrap TF.

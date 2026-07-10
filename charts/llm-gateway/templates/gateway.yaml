@@ -79,6 +79,18 @@ spec:
               value: {{ .Values.discovery.probeTimeoutSeconds | quote }}
             - name: GATEWAY_BACKEND_TIMEOUT_SECS
               value: {{ .Values.backendTimeoutSeconds | quote }}
+            - name: GATEWAY_WAKE_ENABLED
+              value: {{ .Values.wake.enabled | quote }}
+            - name: GATEWAY_WAKE_TIMEOUT_SECS
+              value: {{ .Values.wake.timeoutSeconds | quote }}
+            - name: GATEWAY_WAKE_DISCOVERY_TIMEOUT_SECS
+              value: {{ .Values.wake.discoveryTimeoutSeconds | quote }}
+            - name: GATEWAY_WAKE_POLL_SECS
+              value: {{ .Values.wake.pollSeconds | quote }}
+            - name: GATEWAY_MODEL_ANNOTATION
+              value: {{ .Values.wake.modelAnnotation | quote }}
+            - name: GATEWAY_WAKE_URL_ANNOTATION
+              value: {{ .Values.wake.urlAnnotation | quote }}
           ports:
             - name: http
               containerPort: {{ .Values.service.port }}

@@ -27,6 +27,34 @@
       "min_ready_endpoints": 1,
       "aws_tag_key": "aws-side:index",
       "aws_tag_value": "2"
+    },
+    {
+      "name": "gpu-phi4",
+      "prefix": "/gpu/phi4",
+      "target_namespace": "underpass-labs",
+      "target_service": "vllm-phi4-aws",
+      "target_base_url": "http://vllm-phi4-aws.underpass-labs.svc:8000",
+      "node_selector": "underpass.ai/node-pool=aws-gpu",
+      "desired_workers": 1,
+      "idle_seconds": 0,
+      "min_ready_nodes": 1,
+      "min_ready_endpoints": 1,
+      "aws_tag_key": "aws-side:index",
+      "aws_tag_value": "21"
+    },
+    {
+      "name": "gpu-smollm3",
+      "prefix": "/gpu/smollm3",
+      "target_namespace": "underpass-labs",
+      "target_service": "vllm-smollm3-aws",
+      "target_base_url": "http://vllm-smollm3-aws.underpass-labs.svc:8000",
+      "node_selector": "underpass.ai/node-pool=aws-gpu",
+      "desired_workers": 1,
+      "idle_seconds": 0,
+      "min_ready_nodes": 1,
+      "min_ready_endpoints": 1,
+      "aws_tag_key": "aws-side:index",
+      "aws_tag_value": "21"
     }
   ]
 }

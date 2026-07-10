@@ -11,11 +11,15 @@ No es todavia un operador Kubernetes. Es un proceso local en el control-plane qu
 4. espera a que nodos y endpoints esten listos,
 5. proxya la peticion al servicio real.
 
-**Alcance: SOLO el pool generico (t3.micro).** El worker GPU
-(`aws-gpu-worker-1`, g6/L4) NO tiene perfil en el gateway: ni wake ni auto-stop
-por idle — se arranca y para a mano (ver "Operacion Del Worker GPU" en el
-README raiz). Ademas el reaper mide **HTTP a traves de ESTE gateway**: el
-trafico LLM del `llm-gateway` in-cluster (ceremonias, vLLM) le es invisible.
+El gateway cubre dos usos:
+
+- perfiles CPU (`/worker-1`, `/worker-2`): wake, proxy y auto-stop por idle
+  HTTP del propio gateway;
+- perfiles GPU (`/gpu/phi4`, `/gpu/smollm3`): wake de la g6 por tag y espera
+  de endpoints vLLM. El auto-stop GPU no lo mide este gateway, sino
+  `scripts/gpu-idle-reaper.sh` via Prometheus (`vllm:num_requests_running`),
+  porque el trafico LLM puede entrar por `llm-gateway` desde dentro del
+  cluster.
 
 ## Flujo Por Defecto
 
@@ -91,6 +95,8 @@ Rutas actuales:
 
 - `/worker-1/*` -> `aws-echo-worker-1`, node label `underpass.ai/worker-index=1`, AWS tag `aws-side:index=1`.
 - `/worker-2/*` -> `aws-echo-worker-2`, node label `underpass.ai/worker-index=2`, AWS tag `aws-side:index=2`.
+- `/gpu/phi4/wake` -> espera `vllm-phi4-aws`, node label `underpass.ai/node-pool=aws-gpu`, AWS tag `aws-side:index=21`.
+- `/gpu/smollm3/wake` -> espera `vllm-smollm3-aws`, node label `underpass.ai/node-pool=aws-gpu`, AWS tag `aws-side:index=21`.
 
 Ejemplos:
 
@@ -99,6 +105,8 @@ curl http://192.168.1.243/worker-1/status
 curl http://192.168.1.243/worker-1/hostname
 curl http://192.168.1.243/worker-2/status
 curl http://192.168.1.243/worker-2/hostname
+curl http://192.168.1.243/gpu/phi4/wake
+curl http://192.168.1.243/gpu/smollm3/wake
 ```
 
 Cuando un perfil no esta listo, el gateway arranca solo la EC2 que coincide con su tag:
@@ -106,6 +114,7 @@ Cuando un perfil no esta listo, el gateway arranca solo la EC2 que coincide con 
 ```bash
 scripts/ec2-pool.sh scale-tag aws-side:index 1 1
 scripts/ec2-pool.sh scale-tag aws-side:index 2 1
+scripts/ec2-pool.sh scale-tag aws-side:index 21 1
 ```
 
 La prueba completa esta documentada en `docs/per-node-demand-test.md`.
@@ -122,6 +131,10 @@ profiles:
     idleSeconds: 300
   - name: worker-2
     idleSeconds: 300
+  - name: gpu-phi4
+    idleSeconds: 0
+  - name: gpu-smollm3
+    idleSeconds: 0
 ```
 
 El gateway actualiza `last_request_at` solo en `/wake` y en llamadas proxied al servicio. Las consultas `/status` no alargan la vida del nodo. Cuando pasan `idleSeconds` desde la ultima invocacion, el reaper ejecuta:
@@ -133,6 +146,18 @@ scripts/ec2-pool.sh scale-tag aws-side:index <n> 0
 **Verificado e2e 2026-07-03**: worker-1 despertado via `/worker-1/wake` a las
 19:14:18, sin trafico posterior → `stopping` detectado a las 19:20:01 (clavado
 a los 300s de idle + tick del reaper).
+
+Para la GPU, `idleSeconds: 0` es intencionado. El apagado correcto se decide
+con metricas vLLM, no con HTTP del demand-gateway:
+
+```bash
+systemctl --user enable --now gpu-idle-reaper.timer
+tail -f ~/.local/state/gpu-idle-reaper/events.log
+```
+
+El `llm-gateway` despierta un backend AWS caido si el Service vLLM tiene la
+anotacion `underpass.ai/wake-url`. En `values-aws-gpu.yaml`, `phi4-mini-aws`
+apunta a `/gpu/phi4/wake` y `smollm3-aws` a `/gpu/smollm3/wake`.
 
 ## Permisos
 
@@ -174,12 +199,11 @@ El chart ya declara una entrada HTTPS interna sin cambiar el modelo de activacio
 
 - El primer request puede tardar minutos si los workers estan parados.
 - Si el cliente no tolera ese tiempo, usar `/wake` y luego llamar al servicio real cuando este listo.
-- No observa metricas todavia; solo reacciona a HTTP. (Desde 2026-07-03 existen
-  metricas vLLM en Prometheus — la via natural para un futuro reaper del nodo
-  GPU basado en uso real de inferencia, p.ej. `vllm:num_requests_running == 0`
-  sostenido.)
+- El demand-gateway solo observa HTTP que pasa por el propio gateway. El uso
+  real de GPU se observa en Prometheus desde `gpu-idle-reaper.sh`.
 - El apagado por idle es por perfil y se configura en Helm con `idleSeconds`.
-- El pool GPU queda fuera del gateway (sin perfil): arranque/parada manual.
+- El pool GPU usa perfiles de wake, pero su parada debe quedar en el reaper
+  GPU para no apagar en medio de ceremonias que entran por `llm-gateway`.
 - Para arranque desde frio completo, `local_wireguard_endpoint` debe apuntar a un UDP/51820 alcanzable desde AWS.
 - Si el DNS de `local_wireguard_endpoint` apunta a una web o a otro borde de red, ese borde debe reenviar `UDP/51820` hasta la workstation o actuar como relay WireGuard.
 - Si `local_wireguard_endpoint` se configura despues de crear las EC2, las instancias deben reemplazarse para recoger la nueva configuracion de arranque.

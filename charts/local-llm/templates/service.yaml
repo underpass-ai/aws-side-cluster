@@ -12,6 +12,11 @@ metadata:
     app.kubernetes.io/name: vllm-{{ $m.name }}
     app.kubernetes.io/part-of: local-llm
     underpass.ai/llm-role: {{ $role | quote }}
+  annotations:
+    underpass.ai/served-model: {{ $m.servedName | default $m.name | quote }}
+    {{- with $m.wakeUrl }}
+    underpass.ai/wake-url: {{ . | quote }}
+    {{- end }}
 spec:
   type: {{ $svc.type | default "ClusterIP" }}
   {{- if and (eq ($svc.type | default "ClusterIP") "LoadBalancer") (hasKey $svc "loadBalancerIP") }}

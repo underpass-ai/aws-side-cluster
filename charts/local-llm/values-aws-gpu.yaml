@@ -67,12 +67,14 @@ models:
     repo: microsoft/Phi-4-mini-instruct      # ya en /opt/llm-models (S3)
     servedName: phi4-mini-aws
     role: general
+    wakeUrl: http://aws-demand-gateway.underpass-labs.svc/gpu/phi4/wake
     # L4 (Ada, sm_89) soporta bf16 nativo → vLLM autodetecta el dtype del modelo.
     gpuMemoryUtilization: 0.50               # 3.8B bf16 ~7.7GB de pesos
   - name: smollm3-aws
     repo: HuggingFaceTB/SmolLM3-3B           # tar en S3 models/ (subido 2026-06-26)
     servedName: smollm3-aws
     role: junior
+    wakeUrl: http://aws-demand-gateway.underpass-labs.svc/gpu/smollm3/wake
     gpuMemoryUtilization: 0.40               # 3B bf16 ~6.2GB de pesos
 
 # El SM lo crea el release local-llm (cubre todo el ns); aqui apagado.

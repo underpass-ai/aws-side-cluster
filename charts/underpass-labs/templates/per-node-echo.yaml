@@ -1,4 +1,5 @@
 {{- range .Values.profiles }}
+{{- if not (eq .createEcho false) }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -74,4 +75,5 @@ spec:
     - name: http
       port: {{ .service.port }}
       targetPort: {{ .service.targetPort | quote }}
+{{- end }}
 {{- end }}

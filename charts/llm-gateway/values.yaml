@@ -18,6 +18,14 @@ discovery:
 
 backendTimeoutSeconds: 300
 
+wake:
+  enabled: true
+  timeoutSeconds: 900
+  discoveryTimeoutSeconds: 600
+  pollSeconds: 5
+  modelAnnotation: underpass.ai/served-model
+  urlAnnotation: underpass.ai/wake-url
+
 service:
   port: 8000
 

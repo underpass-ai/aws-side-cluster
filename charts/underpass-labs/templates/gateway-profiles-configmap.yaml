@@ -13,13 +13,35 @@ data:
       "profiles": [
 {{- $last := sub (len .Values.profiles) 1 }}
 {{- range $i, $profile := .Values.profiles }}
+{{- $targetNamespace := $.Values.namespace.name }}
+{{- if $profile.targetNamespace }}
+{{- $targetNamespace = $profile.targetNamespace }}
+{{- end }}
+{{- $targetService := "" }}
+{{- if $profile.targetService }}
+{{- $targetService = $profile.targetService }}
+{{- else }}
+{{- $targetService = $profile.service.name }}
+{{- end }}
+{{- $targetBaseUrl := "" }}
+{{- if $profile.targetBaseUrl }}
+{{- $targetBaseUrl = $profile.targetBaseUrl }}
+{{- else }}
+{{- $targetBaseUrl = printf "http://%s" $profile.service.loadBalancerIP }}
+{{- end }}
+{{- $nodeSelector := "" }}
+{{- if $profile.nodeSelector }}
+{{- $nodeSelector = $profile.nodeSelector }}
+{{- else }}
+{{- $nodeSelector = printf "underpass.ai/worker-index=%s" $profile.workerIndex }}
+{{- end }}
         {
           "name": {{ $profile.name | quote }},
           "prefix": {{ $profile.routePrefix | quote }},
-          "target_namespace": {{ $.Values.namespace.name | quote }},
-          "target_service": {{ $profile.service.name | quote }},
-          "target_base_url": {{ printf "http://%s" $profile.service.loadBalancerIP | quote }},
-          "node_selector": {{ printf "underpass.ai/worker-index=%s" $profile.workerIndex | quote }},
+          "target_namespace": {{ $targetNamespace | quote }},
+          "target_service": {{ $targetService | quote }},
+          "target_base_url": {{ $targetBaseUrl | quote }},
+          "node_selector": {{ $nodeSelector | quote }},
           "desired_workers": {{ $profile.desiredWorkers }},
           "idle_seconds": {{ $profile.idleSeconds }},
           "min_ready_nodes": {{ $profile.minReadyNodes }},

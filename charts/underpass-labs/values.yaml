@@ -95,3 +95,31 @@ profiles:
       port: 80
       targetPort: http
     replicas: 1
+
+  - name: gpu-phi4
+    routePrefix: /gpu/phi4
+    createEcho: false
+    targetService: vllm-phi4-aws
+    targetBaseUrl: http://vllm-phi4-aws.underpass-labs.svc:8000
+    nodeSelector: underpass.ai/node-pool=aws-gpu
+    awsTagKey: aws-side:index
+    awsTagValue: "21"
+    desiredWorkers: 1
+    minReadyNodes: 1
+    minReadyEndpoints: 1
+    # GPU shutdown is handled by scripts/gpu-idle-reaper.sh using Prometheus
+    # vLLM activity, not by demand-gateway HTTP idle.
+    idleSeconds: 0
+
+  - name: gpu-smollm3
+    routePrefix: /gpu/smollm3
+    createEcho: false
+    targetService: vllm-smollm3-aws
+    targetBaseUrl: http://vllm-smollm3-aws.underpass-labs.svc:8000
+    nodeSelector: underpass.ai/node-pool=aws-gpu
+    awsTagKey: aws-side:index
+    awsTagValue: "21"
+    desiredWorkers: 1
+    minReadyNodes: 1
+    minReadyEndpoints: 1
+    idleSeconds: 0
